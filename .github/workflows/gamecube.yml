@@ -1,0 +1,16 @@
+name: Gamecube CI
+
+on: [push, pull_request]
+
+jobs:
+  wii:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+ 
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build
+      run: |
+        catnip -t gamecube
