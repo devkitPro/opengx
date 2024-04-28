@@ -1,0 +1,18 @@
+name: Wii CI
+
+on: [push, pull_request]
+
+jobs:
+  wii:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+ 
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        sparse-checkout: .
+
+    - name: Build
+      run: |
+        catnip -t wii
