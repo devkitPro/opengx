@@ -380,6 +380,14 @@ void glBindTexture(GLenum target, GLuint texture)
         GX_LoadTexObj(&texture_list[glparamstate.glcurtex].texobj, GX_TEXMAP0);
 }
 
+void glTexImage3D(GLenum target, GLint level, GLint internalFormat,
+                  GLsizei width, GLsizei height, GLsizei depth,
+                  GLint border, GLenum format, GLenum type,
+                  const GLvoid *pixels)
+{
+    warning("glTexImage3D not implemented");
+}
+
 void glDeleteTextures(GLsizei n, const GLuint *textures)
 {
     const GLuint *texlist = textures;
