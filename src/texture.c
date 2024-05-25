@@ -166,6 +166,12 @@ void glTexEnvf(GLenum target, GLenum pname, GLfloat param)
     glTexEnvi(target, pname, param);
 }
 
+void glGetTexLevelParameteriv(GLenum target, GLint level,
+                              GLenum pname, GLint *params)
+{
+    warning("glGetTexLevelParameteriv not implemented");
+}
+
 void glTexEnvi(GLenum target, GLenum pname, GLint param)
 {
     HANDLE_CALL_LIST(TEX_ENV, target, pname, param);
