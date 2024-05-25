@@ -1300,6 +1300,11 @@ void glBlendFunc(GLenum sfactor, GLenum dfactor)
     glparamstate.dirty.bits.dirty_blend = 1;
 }
 
+void glPointSize(GLfloat size)
+{
+    GX_SetPointSize((unsigned int)(size * 16), GX_TO_ZERO);
+}
+
 void glLineWidth(GLfloat width)
 {
     GX_SetLineWidth((unsigned int)(width * 16), GX_TO_ZERO);
