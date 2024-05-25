@@ -722,6 +722,11 @@ void glTexCoord2f(GLfloat u, GLfloat v)
     glparamstate.imm_mode.current_texcoord[1] = v;
 }
 
+void glTexCoord2i(GLint s, GLint t)
+{
+    glTexCoord2f(s, t);
+}
+
 void glTexCoord3f(GLfloat s, GLfloat t, GLfloat r)
 {
     glTexCoord2f(s, t);
