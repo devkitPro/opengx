@@ -701,6 +701,11 @@ void glColor4fv(const GLfloat *v)
     glparamstate.imm_mode.current_color[3] = clampf_01(v[3]);
 }
 
+void glColor3ub(GLubyte red, GLubyte green, GLubyte blue)
+{
+    glColor3f(red / 255.0f, green / 255.0f, blue / 255.0f);
+}
+
 void glColor3fv(const GLfloat *v)
 {
     glColor3f(v[0], v[1], v[2]);
