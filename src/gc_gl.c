@@ -2349,6 +2349,23 @@ void glGetIntegerv(GLenum pname, GLint *params)
         return;
     };
 }
+
+void glGetDoublev(GLenum pname, GLdouble *params)
+{
+    float paramsf[16];
+    int n = 1;
+
+    glGetFloatv(pname, paramsf);
+    switch (pname) {
+    case GL_MODELVIEW_MATRIX:
+    case GL_PROJECTION_MATRIX:
+        n = 16; break;
+    };
+    for (int i = 0; i < n; i++) {
+        params[i] = paramsf[i];
+    }
+}
+
 void glGetFloatv(GLenum pname, GLfloat *params)
 {
     switch (pname) {
