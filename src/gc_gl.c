@@ -70,6 +70,8 @@ typedef struct
 
 static const GLubyte gl_null_string[1] = { 0 };
 char _ogx_log_level = 0;
+static GXTexObj s_zbuffer_texture;
+static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
 
 static void draw_arrays_general(int first, int count, int ne,
                                 int color_provide, int texen, bool loop);
@@ -381,6 +383,12 @@ void ogx_initialize()
     // Mark all the hardware data as dirty, so it will be recalculated
     // and uploaded again to the hardware
     glparamstate.dirty.all = ~0;
+
+    /* Initialize the Z-buffer 1x1 texture that we use in glClear() */
+    GX_InitTexObj(&s_zbuffer_texture, s_zbuffer_texels, 1, 1,
+                  GX_TF_Z24X8, GX_CLAMP, GX_CLAMP, GX_FALSE);
+    GX_InitTexObjLOD(&s_zbuffer_texture, GX_NEAR, GX_NEAR,
+                     0.0f, 0.0f, 0.0f, 0, 0, GX_ANISO_1);
 }
 
 void _ogx_setup_2D_projection()
@@ -1254,10 +1262,26 @@ void glClear(GLbitfield mask)
         return;
     }
 
-    if (mask & GL_DEPTH_BUFFER_BIT)
+    if (mask & GL_DEPTH_BUFFER_BIT) {
         GX_SetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
-    else
+        GX_SetZCompLoc(GX_DISABLE);
+        GX_SetZTexture(GX_ZT_REPLACE, GX_TF_Z24X8, 0);
+        GX_SetNumTexGens(1);
+
+        /* Create a 1x1 Z-texture to set the desired depth */
+        /* Our z-buffer depth is 24 bits */
+        uint32_t depth = glparamstate.clearz * ((1 << 24) - 1);
+        s_zbuffer_texels[0] = 0xff; // ignored
+        s_zbuffer_texels[1] = (depth >> 16) & 0xff;
+        s_zbuffer_texels[32] = (depth >> 8) & 0xff;
+        s_zbuffer_texels[33] = depth & 0xff;
+        GX_LoadTexObj(&s_zbuffer_texture, GX_TEXMAP0);
+        GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+    } else {
         GX_SetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+        GX_SetNumTexGens(0);
+        GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    }
 
     if (mask & GL_COLOR_BUFFER_BIT)
         GX_SetColorUpdate(GX_TRUE);
@@ -1266,26 +1290,24 @@ void glClear(GLbitfield mask)
 
     GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_COPY);
     GX_SetCullMode(GX_CULL_NONE);
-    GX_SetZCompLoc(GX_ENABLE);
     GX_SetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
 
     _ogx_setup_2D_projection();
-    /* The far plane is exactly at 1.0 */
-    float depth = -glparamstate.clearz;
 
     GX_SetNumChans(1);
     GX_SetNumTevStages(1);
-    GX_SetNumTexGens(0);
 
     GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
-    GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
     GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_VTX, GX_SRC_VTX, 0, GX_DF_NONE, GX_AF_NONE);
 
     GX_ClearVtxDesc();
     GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
     GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
-    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_U16, 0);
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_U8, 0);
+    GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
     GX_InvVtxCache();
 
     if (glparamstate.fog.enabled) {
@@ -1294,16 +1316,21 @@ void glClear(GLbitfield mask)
     }
 
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-    GX_Position3f32(0, 0, depth);
+    GX_Position2u16(0, 0);
     GX_Color4u8(glparamstate.clear_color.r, glparamstate.clear_color.g, glparamstate.clear_color.b, glparamstate.clear_color.a);
-    GX_Position3f32(0, glparamstate.viewport[3], depth);
+    GX_TexCoord2u8(0, 0);
+    GX_Position2u16(0, glparamstate.viewport[3]);
     GX_Color4u8(glparamstate.clear_color.r, glparamstate.clear_color.g, glparamstate.clear_color.b, glparamstate.clear_color.a);
-    GX_Position3f32(glparamstate.viewport[2], glparamstate.viewport[3], depth);
+    GX_TexCoord2u8(0, 1);
+    GX_Position2u16(glparamstate.viewport[2], glparamstate.viewport[3]);
     GX_Color4u8(glparamstate.clear_color.r, glparamstate.clear_color.g, glparamstate.clear_color.b, glparamstate.clear_color.a);
-    GX_Position3f32(glparamstate.viewport[2], 0, depth);
+    GX_TexCoord2u8(1, 1);
+    GX_Position2u16(glparamstate.viewport[2], 0);
     GX_Color4u8(glparamstate.clear_color.r, glparamstate.clear_color.g, glparamstate.clear_color.b, glparamstate.clear_color.a);
+    GX_TexCoord2u8(1, 0);
     GX_End();
 
+    GX_SetZTexture(GX_ZT_DISABLE, GX_TF_Z24X8, 0);
     glparamstate.dirty.all = ~0;
 }
 
