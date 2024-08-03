@@ -69,11 +69,17 @@ typedef struct
     uint8_t specular_mask;
 } LightMasks;
 
+typedef struct
+{
+    uint8_t mode;
+    bool loop;
+} DrawMode;
+
 char _ogx_log_level = 0;
 static GXTexObj s_zbuffer_texture;
 static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
 
-static void draw_arrays_general(uint8_t gxmode, int first, int count, int ne,
+static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
                                 int color_provide, int texen);
 
 #define MODELVIEW_UPDATE                                           \
@@ -1848,38 +1854,38 @@ static LightMasks prepare_lighting()
     return masks;
 }
 
-static unsigned char draw_mode(GLenum mode)
+static DrawMode draw_mode(GLenum mode)
 {
-    unsigned char gxmode;
+    DrawMode dm = { 0xff, false };
     switch (mode) {
     case GL_POINTS:
-        gxmode = GX_POINTS;
+        dm.mode = GX_POINTS;
         break;
     case GL_LINE_LOOP:
+        dm.loop = true;
+        // fall through
     case GL_LINE_STRIP:
-        gxmode = GX_LINESTRIP;
+        dm.mode = GX_LINESTRIP;
         break;
     case GL_LINES:
-        gxmode = GX_LINES;
+        dm.mode = GX_LINES;
         break;
     case GL_TRIANGLE_STRIP:
     case GL_QUAD_STRIP:
-        gxmode = GX_TRIANGLESTRIP;
+        dm.mode = GX_TRIANGLESTRIP;
         break;
     case GL_TRIANGLE_FAN:
     case GL_POLYGON:
-        gxmode = GX_TRIANGLEFAN;
+        dm.mode = GX_TRIANGLEFAN;
         break;
     case GL_TRIANGLES:
-        gxmode = GX_TRIANGLES;
+        dm.mode = GX_TRIANGLES;
         break;
     case GL_QUADS:
-        gxmode = GX_QUADS;
+        dm.mode = GX_QUADS;
         break;
-    default:
-        return 0xff; // FIXME: Emulate these modes
     }
-    return gxmode;
+    return dm;
 }
 
 static void setup_fog()
@@ -2246,7 +2252,7 @@ void _ogx_apply_state()
 }
 
 typedef struct {
-    u8 gxmode;
+    DrawMode gxmode;
     GLint first;
     GLsizei count;
 } OgxDrawData;
@@ -2264,7 +2270,7 @@ static void flat_draw_geometry(void *cb_data)
     GX_End();
 }
 
-static void draw_elements_general(uint8_t gxmode, int count, GLenum type,
+static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
                                   const GLvoid *indices,
                                   int ne, int color_provide, int texen)
 {
@@ -2291,8 +2297,8 @@ static void draw_elements_general(uint8_t gxmode, int count, GLenum type,
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
-    bool loop = (gxmode == GL_LINE_LOOP);
-    GX_Begin(gxmode, GX_VTXFMT0, count + loop);
+    bool loop = gxmode.loop;
+    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
     for (int i = 0; i < count + loop; i++) {
         int index = read_index(indices, type, i % count);
         float value[4];
@@ -2322,7 +2328,7 @@ static void draw_elements_general(uint8_t gxmode, int count, GLenum type,
 }
 
 typedef struct {
-    u8 gxmode;
+    DrawMode gxmode;
     GLsizei count;
     GLenum type;
     const GLvoid *indices;
@@ -2343,8 +2349,8 @@ static void flat_draw_elements(void *cb_data)
 
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-    unsigned char gxmode = draw_mode(mode);
-    if (gxmode == 0xff)
+    DrawMode gxmode = draw_mode(mode);
+    if (gxmode.mode == 0xff)
         return;
 
     bool should_draw = true;
@@ -2385,9 +2391,8 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
 {
-
-    unsigned char gxmode = draw_mode(mode);
-    if (gxmode == 0xff)
+    DrawMode gxmode = draw_mode(mode);
+    if (gxmode.mode == 0xff)
         return;
 
     bool should_draw = true;
@@ -2425,7 +2430,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     }
 }
 
-static void draw_arrays_general(uint8_t gxmode, int first, int count, int ne,
+static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
                                 int color_provide, int texen)
 {
     // Not using indices
@@ -2451,8 +2456,8 @@ static void draw_arrays_general(uint8_t gxmode, int first, int count, int ne,
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
-    bool loop = (gxmode == GL_LINE_LOOP);
-    GX_Begin(gxmode, GX_VTXFMT0, count + loop);
+    bool loop = gxmode.loop;
+    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
     int i;
     for (i = 0; i < count + loop; i++) {
         int j = i % count + first;
