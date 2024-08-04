@@ -38,6 +38,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <math.h>
 #include <string.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static inline float clampf_01(float n)
 {
     if (n > 1.0f)
@@ -109,10 +113,10 @@ static inline void gl_matrix_multiply(float *dst, float *b, float *a)
 static inline GXColor gxcol_new_fv(float *components)
 {
     GXColor c = {
-        components[0] * 255.0f,
-        components[1] * 255.0f,
-        components[2] * 255.0f,
-        components[3] * 255.0f
+        (u8)(components[0] * 255.0f),
+        (u8)(components[1] * 255.0f),
+        (u8)(components[2] * 255.0f),
+        (u8)(components[3] * 255.0f)
     };
     return c;
 }
@@ -175,18 +179,18 @@ static inline void foreach(GLsizei n, GLenum type, const GLvoid *data,
     switch (type) {
     case GL_BYTE:
     case GL_UNSIGNED_BYTE:
-        foreach_u8(n, data, cb);
+        foreach_u8(n, (const GLbyte *)data, cb);
         break;
     case GL_SHORT:
     case GL_UNSIGNED_SHORT:
-        foreach_u16(n, data, cb);
+        foreach_u16(n, (const GLshort *)data, cb);
         break;
     case GL_INT:
     case GL_UNSIGNED_INT:
-        foreach_u32(n, data, cb);
+        foreach_u32(n, (const GLuint *)data, cb);
         break;
     case GL_FLOAT:
-        foreach_float(n, data, cb);
+        foreach_float(n, (const GLfloat *)data, cb);
         break;
     }
 }
@@ -263,5 +267,9 @@ void _ogx_setup_2D_projection(void);
 void _ogx_setup_3D_projection(void);
 
 bool _ogx_setup_render_stages(void);
+
+#ifdef __cplusplus
+} // extern C
+#endif
 
 #endif /* OGX_UTILS_H */

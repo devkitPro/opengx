@@ -41,6 +41,7 @@ add_library(${TARGET} STATIC
     src/stencil.h
     src/texture.c
     src/utils.h
+    src/vertex.cpp
 )
 set_target_properties(${TARGET} PROPERTIES
     PUBLIC_HEADER src/opengx.h

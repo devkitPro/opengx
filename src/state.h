@@ -49,7 +49,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #define MAX_GX_LIGHTS  8
 #define MAX_NAME_STACK_DEPTH 256 /* 64 is the minimum required */
 
-typedef float VertexData[12];
+typedef struct {
+    float pos[3];
+    float norm[3];
+    float tex[2];
+    GXColor color;
+} VertexData;
 
 typedef struct gltexture_
 {

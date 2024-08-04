@@ -785,18 +785,22 @@ void glBegin(GLenum mode)
 void glEnd()
 {
     struct client_state cs_backup = glparamstate.cs;
-    float *base = &glparamstate.imm_mode.current_vertices[0][0];
-    int stride = 12 * sizeof(float);
-    _ogx_array_reader_init(&glparamstate.texcoord_array, base, GL_FLOAT, stride);
+    VertexData *base = glparamstate.imm_mode.current_vertices;
+    int stride = sizeof(VertexData);
+    _ogx_array_reader_init(&glparamstate.texcoord_array, base->tex,
+                           GL_FLOAT, stride);
     _ogx_array_reader_set_num_elements(&glparamstate.texcoord_array, 2);
-    base += 2;
-    _ogx_array_reader_init(&glparamstate.color_array, base, GL_FLOAT, stride);
+
+    _ogx_array_reader_init(&glparamstate.color_array, &base->color,
+                           GL_UNSIGNED_BYTE, stride);
     _ogx_array_reader_set_num_elements(&glparamstate.color_array, 4);
-    base += 4;
-    _ogx_array_reader_init(&glparamstate.normal_array, base, GL_FLOAT, stride);
+
+    _ogx_array_reader_init(&glparamstate.normal_array, base->norm,
+                           GL_FLOAT, stride);
     _ogx_array_reader_set_num_elements(&glparamstate.normal_array, 3);
-    base += 3;
-    _ogx_array_reader_init(&glparamstate.vertex_array, base, GL_FLOAT, stride);
+
+    _ogx_array_reader_init(&glparamstate.vertex_array, base->pos,
+                           GL_FLOAT, stride);
     _ogx_array_reader_set_num_elements(&glparamstate.vertex_array, 3);
     glparamstate.cs.texcoord_enabled = 1;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
@@ -821,163 +825,6 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
 {
     GX_SetScissor(x, y, width, height);
-}
-
-void glColor4ub(GLubyte r, GLubyte g, GLubyte b, GLubyte a)
-{
-    if (glparamstate.imm_mode.in_gl_begin)
-        glparamstate.imm_mode.has_color = 1;
-    glparamstate.imm_mode.current_color[0] = r / 255.0f;
-    glparamstate.imm_mode.current_color[1] = g / 255.0f;
-    glparamstate.imm_mode.current_color[2] = b / 255.0f;
-    glparamstate.imm_mode.current_color[3] = a / 255.0f;
-}
-void glColor4ubv(const GLubyte *color)
-{
-    if (glparamstate.imm_mode.in_gl_begin)
-        glparamstate.imm_mode.has_color = 1;
-    glparamstate.imm_mode.current_color[0] = color[0] / 255.0f;
-    glparamstate.imm_mode.current_color[1] = color[1] / 255.0f;
-    glparamstate.imm_mode.current_color[2] = color[2] / 255.0f;
-    glparamstate.imm_mode.current_color[3] = color[3] / 255.0f;
-}
-void glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
-{
-    if (glparamstate.imm_mode.in_gl_begin)
-        glparamstate.imm_mode.has_color = 1;
-    glparamstate.imm_mode.current_color[0] = clampf_01(red);
-    glparamstate.imm_mode.current_color[1] = clampf_01(green);
-    glparamstate.imm_mode.current_color[2] = clampf_01(blue);
-    glparamstate.imm_mode.current_color[3] = clampf_01(alpha);
-}
-
-void glColor3f(GLfloat red, GLfloat green, GLfloat blue)
-{
-    if (glparamstate.imm_mode.in_gl_begin)
-        glparamstate.imm_mode.has_color = 1;
-    glparamstate.imm_mode.current_color[0] = clampf_01(red);
-    glparamstate.imm_mode.current_color[1] = clampf_01(green);
-    glparamstate.imm_mode.current_color[2] = clampf_01(blue);
-    glparamstate.imm_mode.current_color[3] = 1.0f;
-}
-
-void glColor4fv(const GLfloat *v)
-{
-    if (glparamstate.imm_mode.in_gl_begin)
-        glparamstate.imm_mode.has_color = 1;
-    glparamstate.imm_mode.current_color[0] = clampf_01(v[0]);
-    glparamstate.imm_mode.current_color[1] = clampf_01(v[1]);
-    glparamstate.imm_mode.current_color[2] = clampf_01(v[2]);
-    glparamstate.imm_mode.current_color[3] = clampf_01(v[3]);
-}
-
-void glColor3ub(GLubyte red, GLubyte green, GLubyte blue)
-{
-    glColor3f(red / 255.0f, green / 255.0f, blue / 255.0f);
-}
-
-void glColor3fv(const GLfloat *v)
-{
-    glColor3f(v[0], v[1], v[2]);
-}
-
-void glTexCoord2d(GLdouble u, GLdouble v)
-{
-    glTexCoord2f(u, v);
-}
-
-void glTexCoord2f(GLfloat u, GLfloat v)
-{
-    glparamstate.imm_mode.current_texcoord[0] = u;
-    glparamstate.imm_mode.current_texcoord[1] = v;
-}
-
-void glTexCoord2i(GLint s, GLint t)
-{
-    glTexCoord2f(s, t);
-}
-
-void glTexCoord3f(GLfloat s, GLfloat t, GLfloat r)
-{
-    glTexCoord2f(s, t);
-    if (r != 0.0) {
-        warning("glTexCoord3f not supported");
-    }
-}
-
-void glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz)
-{
-    glparamstate.imm_mode.current_normal[0] = nx;
-    glparamstate.imm_mode.current_normal[1] = ny;
-    glparamstate.imm_mode.current_normal[2] = nz;
-}
-
-void glNormal3fv(const GLfloat *v)
-{
-    glparamstate.imm_mode.current_normal[0] = v[0];
-    glparamstate.imm_mode.current_normal[1] = v[1];
-    glparamstate.imm_mode.current_normal[2] = v[2];
-}
-
-void glVertex2d(GLdouble x, GLdouble y)
-{
-    glVertex3f(x, y, 0.0f);
-}
-
-void glVertex2i(GLint x, GLint y)
-{
-    glVertex3f(x, y, 0.0f);
-}
-
-void glVertex2f(GLfloat x, GLfloat y)
-{
-    glVertex3f(x, y, 0.0f);
-}
-
-void glVertex3f(GLfloat x, GLfloat y, GLfloat z)
-{
-    if (glparamstate.imm_mode.current_numverts >= glparamstate.imm_mode.current_vertices_size) {
-        if (!glparamstate.imm_mode.current_vertices) return;
-        int current_size = glparamstate.imm_mode.current_vertices_size;
-        int new_size = current_size < 256 ? (current_size * 2) : (current_size + 256);
-        void *new_buffer = realloc(glparamstate.imm_mode.current_vertices,
-                                   new_size * sizeof(VertexData));
-        if (!new_buffer) {
-            warning("Failed to reallocate memory for vertex buffer (%d)", errno);
-            set_error(GL_OUT_OF_MEMORY);
-            return;
-        }
-        glparamstate.imm_mode.current_vertices_size = new_size;
-        glparamstate.imm_mode.current_vertices = new_buffer;
-    }
-
-    // GL_T2F_C4F_N3F_V3F
-    float *vert = glparamstate.imm_mode.current_vertices[glparamstate.imm_mode.current_numverts++];
-    vert[0] = glparamstate.imm_mode.current_texcoord[0];
-    vert[1] = glparamstate.imm_mode.current_texcoord[1];
-
-    floatcpy(vert + 2, glparamstate.imm_mode.current_color, 4);
-
-    floatcpy(vert + 6, glparamstate.imm_mode.current_normal, 3);
-
-    vert[9] = x;
-    vert[10] = y;
-    vert[11] = z;
-}
-
-void glVertex4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w)
-{
-    glVertex3f(x / w, y / w, z / w);
-}
-
-void glVertex2fv(const GLfloat *v)
-{
-    glVertex2f(v[0], v[1]);
-}
-
-void glVertex3fv(const GLfloat *v)
-{
-    glVertex3f(v[0], v[1], v[2]);
 }
 
 void glMatrixMode(GLenum mode)
@@ -2296,25 +2143,25 @@ static void draw_elements_general(uint8_t gxmode, int count, GLenum type,
     for (int i = 0; i < count + loop; i++) {
         int index = read_index(indices, type, i % count);
         float value[4];
-        _ogx_array_reader_read_float(&glparamstate.vertex_array, index, value);
+        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, index, value);
 
         GX_Position3f32(value[0], value[1], value[2]);
 
         if (ne) {
-            _ogx_array_reader_read_float(&glparamstate.normal_array, index, value);
+            _ogx_array_reader_read_norm3f(&glparamstate.normal_array, index, value);
             GX_Normal3f32(value[0], value[1], value[2]);
         }
 
         if (color_provide) {
-            _ogx_array_reader_read_float(&glparamstate.color_array, index, value);
-            unsigned char arr[4] = { value[0] * 255.0f, value[1] * 255.0f, value[2] * 255.0f, value[3] * 255.0f };
-            GX_Color4u8(arr[0], arr[1], arr[2], arr[3]);
+            GXColor color;
+            _ogx_array_reader_read_color(&glparamstate.color_array, index, &color);
+            GX_Color4u8(color.r, color.g, color.b, color.a);
             if (color_provide == 2)
-                GX_Color4u8(arr[0], arr[1], arr[2], arr[3]);
+                GX_Color4u8(color.r, color.g, color.b, color.a);
         }
 
         if (texen) {
-            _ogx_array_reader_read_float(&glparamstate.texcoord_array, index, value);
+            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array, index, value);
             GX_TexCoord2f32(value[0], value[1]);
         }
     }
@@ -2457,26 +2304,26 @@ static void draw_arrays_general(uint8_t gxmode, int first, int count, int ne,
     for (i = 0; i < count + loop; i++) {
         int j = i % count + first;
         float value[4];
-        _ogx_array_reader_read_float(&glparamstate.vertex_array, j, value);
+        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, j, value);
         GX_Position3f32(value[0], value[1], value[2]);
 
         if (ne) {
-            _ogx_array_reader_read_float(&glparamstate.normal_array, j, value);
+            _ogx_array_reader_read_norm3f(&glparamstate.normal_array, j, value);
             GX_Normal3f32(value[0], value[1], value[2]);
         }
 
         // If the data stream doesn't contain any color data just
         // send the current color (the last glColor* call)
         if (color_provide) {
-            _ogx_array_reader_read_float(&glparamstate.color_array, j, value);
-            unsigned char arr[4] = { value[0] * 255.0f, value[1] * 255.0f, value[2] * 255.0f, value[3] * 255.0f };
-            GX_Color4u8(arr[0], arr[1], arr[2], arr[3]);
+            GXColor color;
+            _ogx_array_reader_read_color(&glparamstate.color_array, j, &color);
+            GX_Color4u8(color.r, color.g, color.b, color.a);
             if (color_provide == 2)
-                GX_Color4u8(arr[0], arr[1], arr[2], arr[3]);
+                GX_Color4u8(color.r, color.g, color.b, color.a);
         }
 
         if (texen) {
-            _ogx_array_reader_read_float(&glparamstate.texcoord_array, j, value);
+            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array, j, value);
             GX_TexCoord2f32(value[0], value[1]);
         }
     }
