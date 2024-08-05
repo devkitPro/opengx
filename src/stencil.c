@@ -34,7 +34,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "debug.h"
 #include "efb.h"
-#include "opengx.h"
 #include "state.h"
 #include "utils.h"
 
@@ -44,7 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 static bool s_wants_stencil = false;
 static bool s_stencil_texture_needs_update = false;
 static uint8_t s_stencil_format = GX_CTF_R4;
-static OgxStencilFlags s_stencil_flags = OGX_STENCIL_NONE;
+OgxStencilFlags _ogx_stencil_flags = OGX_STENCIL_NONE;
 /* This is the authoritative stencil buffer contents: note that the order of
  * the pixel data follows the GX texture scrambling logic. */
 static uint8_t *s_stencil_buffer = NULL;
@@ -58,6 +57,11 @@ static struct _dirty_area {
     uint16_t right;
 } s_dirty_area = { 0, 0, 0, 0 };
 static int s_stencil_count_updated = 0;
+
+static inline bool stencil_8bit()
+{
+    return _ogx_stencil_flags & OGX_STENCIL_8BIT;
+}
 
 static void check_bounding_box()
 {
@@ -123,7 +127,7 @@ static inline TevComparisonType comparison_type(uint8_t comparison, uint8_t mask
         if (comparison == GX_GEQUAL && masked_ref == 0)
             return TEV_COMP_ALWAYS;
         if (comparison == GX_LEQUAL) {
-            uint8_t max_value = s_stencil_flags & OGX_STENCIL_8BIT ? 0xff : 0xf;
+            uint8_t max_value = stencil_8bit() ? 0xff : 0xf;
             if (masked_ref == max_value)
                 return TEV_COMP_ALWAYS;
         }
@@ -170,7 +174,7 @@ static void update_stencil_texture()
      * area) and, in addition to that, we round up to the texture blocks, to
      * simplify the loops */
     int block_width = 8;
-    int block_height = s_stencil_flags & OGX_STENCIL_8BIT ? 4 : 8;
+    int block_height = stencil_8bit() ? 4 : 8;
     int block_pitch = width / block_width;
 
     int block_start_y = top / block_height;
@@ -192,7 +196,7 @@ static void update_stencil_texture()
          * buffer values ANDed with the stencil mask. Such a texture can be
          * used with most comparison functions. */
         uint32_t mask = glparamstate.stencil.mask;
-        if (!(s_stencil_flags & OGX_STENCIL_8BIT)) {
+        if (!stencil_8bit()) {
             mask |= mask << 4; /* replicate the nibble it to fill a byte */
         }
         /* replicate the byte to fill a 32-bit word */
@@ -221,7 +225,7 @@ static void update_stencil_texture()
             uint8_t *dst = stencil_texels + offset;
             /* A block is 32 bytes */
             for (int i = 0; i < width_blocks * 32; i++) {
-                if (s_stencil_flags & OGX_STENCIL_8BIT) {
+                if (stencil_8bit()) {
                     uint8_t gequal_than_ref = (*src++ & mask) != masked_ref;
                     *dst++ = gequal_than_ref;
                 } else {
@@ -314,7 +318,7 @@ static bool setup_tev_full(int *stages, int *tex_coords, int tex_maps,
     if (ref_value == GX_CA_KONST) {
         GX_SetTevKColorSel(stage, GX_TEV_KCSEL_K0);
         GX_SetTevKAlphaSel(stage, GX_TEV_KASEL_K0_A);
-        if (!(s_stencil_flags & OGX_STENCIL_8BIT)) {
+        if (!stencil_8bit()) {
             /* Replicate the value in the upper 4 bits */
             masked_ref |= masked_ref << 4;
         }
@@ -377,7 +381,7 @@ static bool draw_op(uint16_t op,
     int num_tex_coords = 0;
 
     uint8_t masked_ref = glparamstate.stencil.ref & glparamstate.stencil.wmask;
-    if (!(s_stencil_flags &OGX_STENCIL_8BIT)) {
+    if (!stencil_8bit()) {
         /* Replicate the nibble to fill the whole byte */
         masked_ref |= masked_ref << 4;
     }
@@ -592,7 +596,7 @@ void _ogx_stencil_clear()
     u32 size = GX_GetTexBufferSize(width, height, s_stencil_format,
                                    0, GX_FALSE);
     int value = glparamstate.stencil.clear;
-    if (!(s_stencil_flags & OGX_STENCIL_8BIT)) {
+    if (!stencil_8bit()) {
         value |= value << 4;
     }
     if (s_stencil_buffer) {
@@ -615,7 +619,7 @@ void _ogx_stencil_clear()
 void ogx_stencil_create(OgxStencilFlags flags)
 {
     s_wants_stencil = true;
-    s_stencil_flags = flags;
+    _ogx_stencil_flags = flags;
     if (flags & OGX_STENCIL_8BIT) {
         s_stencil_format = GX_CTF_R8;
     } else {
@@ -632,7 +636,7 @@ void glStencilFunc(GLenum func, GLint ref, GLuint mask)
     /* No sense in storing more than the lower 8 bits */
     uint8_t new_ref = (uint8_t)ref;
     uint8_t new_mask = (uint8_t)mask;
-    if (!(s_stencil_flags & OGX_STENCIL_8BIT)) {
+    if (!stencil_8bit()) {
         new_mask &= 0xf;
         new_ref &= 0xf;
     }
@@ -661,7 +665,7 @@ void glStencilFunc(GLenum func, GLint ref, GLuint mask)
 void glStencilMask(GLuint mask)
 {
     glparamstate.stencil.wmask = (uint8_t)mask;
-    if (!(s_stencil_flags & OGX_STENCIL_8BIT)) {
+    if (!stencil_8bit()) {
         glparamstate.stencil.wmask &= 0xf;
     }
 }

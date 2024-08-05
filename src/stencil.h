@@ -33,9 +33,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef OPENGX_STENCIL_H
 #define OPENGX_STENCIL_H
 
-#include <GL/gl.h>
+#include "opengx.h"
+
 #include <malloc.h>
 #include <stdbool.h>
+
+extern OgxStencilFlags _ogx_stencil_flags;
 
 void _ogx_stencil_enabled(void);
 void _ogx_stencil_disabled(void);

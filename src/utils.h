@@ -256,6 +256,21 @@ static inline uint8_t gx_compare_from_gl(GLenum func)
     }
 }
 
+static inline GLenum gl_compare_from_gx(uint8_t func)
+{
+    switch (func) {
+    case GX_NEVER: return GL_NEVER;
+    case GX_LESS: return GL_LESS;
+    case GX_EQUAL: return GL_EQUAL;
+    case GX_LEQUAL: return GL_LEQUAL;
+    case GX_GREATER: return GL_GREATER;
+    case GX_NEQUAL: return GL_NOTEQUAL;
+    case GX_GEQUAL: return GL_GEQUAL;
+    case GX_ALWAYS: return GL_ALWAYS;
+    default: return GL_NEVER;
+    }
+}
+
 /* Set up the matrices for 2D pixel-perfect drawing */
 void _ogx_setup_2D_projection(void);
 

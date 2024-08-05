@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "debug.h"
 #include "utils.h"
 #include "state.h"
+#include "stencil.h"
 
 #include <GL/gl.h>
 #include <string.h>
@@ -60,6 +61,45 @@ const GLubyte *glGetString(GLenum name)
     default:
         set_error(GL_INVALID_ENUM);
         return gl_null_string;
+    }
+}
+
+GLboolean glIsEnabled(GLenum cap)
+{
+    switch (cap) {
+    case GL_ALPHA_TEST:
+        return glparamstate.alphatest_enabled;
+    case GL_BLEND:
+        return glparamstate.blendenabled;
+    case GL_COLOR_MATERIAL:
+        return glparamstate.lighting.color_material_enabled;
+    case GL_CULL_FACE:
+        return glparamstate.cullenabled;
+    case GL_DEPTH_TEST:
+        return glparamstate.ztest;
+    case GL_FOG:
+        return glparamstate.fog.enabled;
+    case GL_LIGHT0:
+    case GL_LIGHT1:
+    case GL_LIGHT2:
+    case GL_LIGHT3:
+        return glparamstate.lighting.lights[cap - GL_LIGHT0].enabled;
+    case GL_LIGHTING:
+        return glparamstate.lighting.enabled;
+    case GL_STENCIL_TEST:
+        return glparamstate.stencil.enabled;
+    case GL_TEXTURE_2D:
+        return glparamstate.texture_enabled;
+    case GL_TEXTURE_GEN_S:
+        return glparamstate.texture_gen_enabled & OGX_TEXGEN_S;
+    case GL_TEXTURE_GEN_T:
+        return glparamstate.texture_gen_enabled & OGX_TEXGEN_T;
+    case GL_TEXTURE_GEN_R:
+        return glparamstate.texture_gen_enabled & OGX_TEXGEN_R;
+    case GL_TEXTURE_GEN_Q:
+        return glparamstate.texture_gen_enabled & OGX_TEXGEN_Q;
+    default:
+        return 0;
     }
 }
 
@@ -92,7 +132,7 @@ void glGetFloatv(GLenum pname, GLfloat *params)
     case GL_PROJECTION_MATRIX:
         for (int i = 0; i < 4; i++)
             for (int j = 0; j < 4; j++)
-                params[j * 4 + i] = glparamstate.modelview_matrix[i][j];
+                params[j * 4 + i] = glparamstate.projection_matrix[i][j];
         return;
     default:
         return;
@@ -141,6 +181,36 @@ void glGetIntegerv(GLenum pname, GLint *params)
         break;
     case GL_PACK_ALIGNMENT:
         *params = glparamstate.pack_alignment;
+        break;
+    case GL_STENCIL_BITS:
+        *params = _ogx_stencil_flags & OGX_STENCIL_8BIT ? 8 : 4;
+        break;
+    case GL_STENCIL_CLEAR_VALUE:
+        *params = glparamstate.stencil.clear;
+        break;
+    case GL_STENCIL_FAIL:
+        *params = glparamstate.stencil.op_fail;
+        break;
+    case GL_STENCIL_FUNC:
+        *params = gl_compare_from_gx(glparamstate.stencil.func);
+        break;
+    case GL_STENCIL_PASS_DEPTH_FAIL:
+        *params = glparamstate.stencil.op_zfail;
+        break;
+    case GL_STENCIL_PASS_DEPTH_PASS:
+        *params = glparamstate.stencil.op_zpass;
+        break;
+    case GL_STENCIL_REF:
+        *params = glparamstate.stencil.ref;
+        break;
+    case GL_STENCIL_TEST:
+        *params = glparamstate.stencil.enabled;
+        break;
+    case GL_STENCIL_VALUE_MASK:
+        *params = glparamstate.stencil.mask;
+        break;
+    case GL_STENCIL_WRITEMASK:
+        *params = glparamstate.stencil.wmask;
         break;
     case GL_UNPACK_SWAP_BYTES:
         *params = glparamstate.unpack_swap_bytes;
