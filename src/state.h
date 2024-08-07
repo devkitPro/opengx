@@ -48,8 +48,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #define MAX_LIGHTS     4   // Max num lights
 #define MAX_GX_LIGHTS  8
 #define MAX_NAME_STACK_DEPTH 256 /* 64 is the minimum required */
+/* A TEV stage can process up to 2 clip planes, so we could increase this if
+ * needed */
+#define MAX_CLIP_PLANES 6
 
 typedef float VertexData[12];
+
+typedef float ClipPlane[4];
 
 typedef struct gltexture_
 {
@@ -69,6 +74,7 @@ typedef struct glparams_
     Mtx44 projection_matrix;
     Mtx modelview_stack[MAX_MODV_STACK];
     Mtx44 projection_stack[MAX_PROJ_STACK];
+    ClipPlane clip_planes[MAX_CLIP_PLANES];
     float texture_eye_plane_s[4];
     float texture_eye_plane_t[4];
     float texture_object_plane_s[4];
@@ -84,6 +90,7 @@ typedef struct glparams_
     unsigned char frontcw, cullenabled;
     bool color_update;
     uint8_t alpha_func, alpha_ref, alphatest_enabled;
+    uint8_t clip_plane_mask;
     uint16_t texture_env_mode;
     /* There should be 4 of these (for S, T, R, Q) but GX uses a single
      * transformation for all of them */
@@ -157,6 +164,7 @@ typedef struct glparams_
             unsigned dirty_matrices : 1;
             unsigned dirty_lighting : 1;
             unsigned dirty_material : 1;
+            unsigned dirty_clip_planes : 1;
             unsigned dirty_cull : 1;
             unsigned dirty_texture_gen : 1;
             unsigned dirty_stencil : 1;

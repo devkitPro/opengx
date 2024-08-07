@@ -259,12 +259,14 @@ static void load_stencil_into_efb()
     _ogx_efb_content_type = OGX_EFB_STENCIL;
 }
 
-static bool setup_tev_full(int *stages, int *tex_coords, int tex_maps,
+static bool setup_tev_full(int *stages, int *tex_coords,
+                           int *tex_maps, int *tex_mtxs,
                            bool invert_logic)
 {
     u8 stage = GX_TEVSTAGE0 + *stages;
     u8 tex_coord = GX_TEXCOORD0 + *tex_coords;
-    u8 tex_map = GX_TEXMAP0 + tex_maps;
+    u8 tex_map = GX_TEXMAP0 + *tex_maps;
+    u8 tex_mtx = GX_TEXMTX0 + *tex_mtxs * 3;
 
     /* TODO: keep track of the potential values of the stencil buffer, and
      * avoid drawing if we are sure that a match cannot happen. */
@@ -352,14 +354,16 @@ static bool setup_tev_full(int *stages, int *tex_coords, int tex_maps,
         {0,      0,   1, 0},
     };
     guMtxConcat(trans, m, m);
-    GX_LoadTexMtxImm(m, GX_TEXMTX0, GX_MTX3x4);
+    GX_LoadTexMtxImm(m, tex_mtx, GX_MTX3x4);
 
-    GX_SetTexCoordGen(tex_coord, GX_TG_MTX3x4, GX_TG_POS, GX_TEXMTX0);
+    GX_SetTexCoordGen(tex_coord, GX_TG_MTX3x4, GX_TG_POS, tex_mtx);
     glparamstate.dirty.bits.dirty_texture_gen = 1;
 
     GX_LoadTexObj(&s_stencil_texture, tex_map);
     ++(*stages);
     ++(*tex_coords);
+    ++(*tex_maps);
+    ++(*tex_mtxs);
     return true;
 }
 
@@ -375,6 +379,8 @@ static bool draw_op(uint16_t op,
 
     int num_stages = 1;
     int num_tex_coords = 0;
+    int num_tex_maps = 0;
+    int num_tex_mtxs = 0;
 
     uint8_t masked_ref = glparamstate.stencil.ref & glparamstate.stencil.wmask;
     if (!(s_stencil_flags &OGX_STENCIL_8BIT)) {
@@ -448,7 +454,9 @@ static bool draw_op(uint16_t op,
     GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_VTX, GX_SRC_VTX, 0, GX_DF_NONE, GX_AF_NONE);
     if (check_stencil) {
         bool must_draw =
-            setup_tev_full(&num_stages, &num_tex_coords, 0, invert_stencil);
+            setup_tev_full(&num_stages, &num_tex_coords,
+                           &num_tex_maps, &num_tex_mtxs,
+                           invert_stencil);
         if (!must_draw) return false;
     }
 
@@ -475,9 +483,10 @@ static bool draw_op(uint16_t op,
     return true;
 }
 
-bool _ogx_stencil_setup_tev(int *stages, int *tex_coords, int tex_maps)
+bool _ogx_stencil_setup_tev(int *stages, int *tex_coords,
+                            int *tex_maps, int *tex_mtxs)
 {
-    return setup_tev_full(stages, tex_coords, tex_maps, false);
+    return setup_tev_full(stages, tex_coords, tex_maps, tex_mtxs, false);
 }
 
 void _ogx_stencil_draw(OgxStencilDrawCallback callback, void *cb_data)

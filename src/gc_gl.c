@@ -46,6 +46,7 @@ POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
 #include "call_lists.h"
+#include "clip.h"
 #include "debug.h"
 #include "opengx.h"
 #include "selection.h"
@@ -438,6 +439,14 @@ void glEnable(GLenum cap)
         glparamstate.blendenabled = 1;
         glparamstate.dirty.bits.dirty_blend = 1;
         break;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+        _ogx_clip_enabled(cap - GL_CLIP_PLANE0);
+        break;
     case GL_DEPTH_TEST:
         glparamstate.ztest = GX_TRUE;
         glparamstate.dirty.bits.dirty_z = 1;
@@ -502,6 +511,14 @@ void glDisable(GLenum cap)
     case GL_BLEND:
         glparamstate.blendenabled = 0;
         glparamstate.dirty.bits.dirty_blend = 1;
+        break;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+        _ogx_clip_disabled(cap - GL_CLIP_PLANE0);
         break;
     case GL_DEPTH_TEST:
         glparamstate.ztest = GX_FALSE;
@@ -1937,7 +1954,7 @@ static void setup_fog()
     GX_SetFog(mode, start, end, near, far, color);
 }
 
-static void setup_texture_gen()
+static void setup_texture_gen(int *tex_mtxs)
 {
     Mtx m;
 
@@ -1954,21 +1971,23 @@ static void setup_texture_gen()
     switch (glparamstate.texture_gen_mode) {
     case GL_OBJECT_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0;
+        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
         set_gx_mtx_rowv(0, m, glparamstate.texture_object_plane_s);
         set_gx_mtx_rowv(1, m, glparamstate.texture_object_plane_t);
         set_gx_mtx_row(2, m, 0.0f, 0.0f, 1.0f, 0.0f);
-        GX_LoadTexMtxImm(m, GX_TEXMTX0, GX_MTX2x4);
+        GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
+        ++(*tex_mtxs);
         break;
     case GL_EYE_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0;
+        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
         Mtx eye_plane;
         set_gx_mtx_rowv(0, eye_plane, glparamstate.texture_eye_plane_s);
         set_gx_mtx_rowv(1, eye_plane, glparamstate.texture_eye_plane_t);
         set_gx_mtx_row(2, eye_plane, 0.0f, 0.0f, 1.0f, 0.0f);
         guMtxConcat(eye_plane, glparamstate.modelview_matrix, m);
-        GX_LoadTexMtxImm(m, GX_TEXMTX0, GX_MTX2x4);
+        GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
+        ++(*tex_mtxs);
         break;
     default:
         warning("Unsupported texture coordinate generation mode %x",
@@ -1979,7 +1998,7 @@ static void setup_texture_gen()
 }
 
 static void setup_texture_stage(u8 stage, u8 raster_color, u8 raster_alpha,
-                                u8 channel)
+                                u8 channel, int *tex_mtxs)
 {
     switch (glparamstate.texture_env_mode) {
     case GL_REPLACE:
@@ -2012,14 +2031,14 @@ static void setup_texture_stage(u8 stage, u8 raster_color, u8 raster_alpha,
     GX_SetTevOrder(stage, GX_TEXCOORD0, GX_TEXMAP0, channel);
     GX_LoadTexObj(&texture_list[glparamstate.glcurtex].texobj, GX_TEXMAP0);
     if (glparamstate.dirty.bits.dirty_texture_gen) {
-        setup_texture_gen();
+        setup_texture_gen(tex_mtxs);
         glparamstate.dirty.bits.dirty_texture_gen = 0;
     }
 }
 
 bool _ogx_setup_render_stages()
 {
-    int stages = 0, tex_coords = 0, tex_maps = 0;
+    int stages = 0, tex_coords = 0, tex_maps = 0, tex_mtxs = 0;
 
     if (glparamstate.lighting.enabled) {
         LightMasks light_mask = prepare_lighting();
@@ -2119,7 +2138,8 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Do not select any raster value, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            setup_texture_stage(GX_TEVSTAGE2, GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL);
+            setup_texture_stage(GX_TEVSTAGE2, GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL,
+                                &tex_mtxs);
             stages++;
             tex_coords++;
             tex_maps++;
@@ -2156,7 +2176,7 @@ bool _ogx_setup_render_stages()
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
             setup_texture_stage(GX_TEVSTAGE0,
                                 vertex_color_register, vertex_alpha_register,
-                                rasterized_color);
+                                rasterized_color, &tex_mtxs);
             tex_coords++;
             tex_maps++;
         } else {
@@ -2173,9 +2193,14 @@ bool _ogx_setup_render_stages()
 
     if (glparamstate.stencil.enabled) {
         bool should_draw =
-            _ogx_stencil_setup_tev(&stages, &tex_coords, tex_maps);
+            _ogx_stencil_setup_tev(&stages, &tex_coords, &tex_maps, &tex_mtxs);
         if (!should_draw) return false;
     }
+
+    if (glparamstate.clip_plane_mask != 0) {
+        _ogx_clip_setup_tev(&stages, &tex_coords, &tex_maps, &tex_mtxs);
+    }
+
     GX_SetNumTevStages(stages);
     GX_SetNumTexGens(tex_coords);
 
@@ -2201,7 +2226,8 @@ void _ogx_apply_state()
     }
 
     if (glparamstate.dirty.bits.dirty_alphatest ||
-        glparamstate.dirty.bits.dirty_stencil) {
+        glparamstate.dirty.bits.dirty_stencil ||
+        glparamstate.dirty.bits.dirty_clip_planes) {
         u8 params[4] = { GX_ALWAYS, 0, GX_ALWAYS, 0 };
         int comparisons = 0;
         if (glparamstate.alphatest_enabled) {
@@ -2209,7 +2235,7 @@ void _ogx_apply_state()
             params[1] = glparamstate.alpha_ref;
             comparisons++;
         }
-        if (glparamstate.stencil.enabled) {
+        if (glparamstate.stencil.enabled || glparamstate.clip_plane_mask) {
             params[comparisons * 2] = GX_GREATER;
             /* The reference value is initialized to 0, which is the value we
              * want */
@@ -2241,6 +2267,7 @@ void _ogx_apply_state()
     glparamstate.dirty.bits.dirty_stencil = 0;
     glparamstate.dirty.bits.dirty_alphatest = 0;
     glparamstate.dirty.bits.dirty_blend = 0;
+    glparamstate.dirty.bits.dirty_clip_planes = 0;
     glparamstate.dirty.bits.dirty_color_update = 0;
     glparamstate.dirty.bits.dirty_z = 0;
 }
@@ -2547,7 +2574,6 @@ void glHint(GLenum target, GLenum mode) {}
 
 // TODO STUB IMPLEMENTATION
 
-void glClipPlane(GLenum plane, const GLdouble *equation) {}
 void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {}
 void glLightModelf(GLenum pname, GLfloat param) {}
 void glLightModeli(GLenum pname, GLint param) {}

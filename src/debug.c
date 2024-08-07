@@ -41,6 +41,7 @@ static const struct {
 } s_feature_masks[] = {
     { "warning", OGX_LOG_WARNING },
     { "call-lists", OGX_LOG_CALL_LISTS },
+    { "clipping", OGX_LOG_CLIPPING },
     { "lighting", OGX_LOG_LIGHTING },
     { "texture", OGX_LOG_TEXTURE },
     { "stencil", OGX_LOG_STENCIL },

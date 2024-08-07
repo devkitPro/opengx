@@ -42,7 +42,8 @@ void _ogx_stencil_disabled(void);
 void _ogx_stencil_update(void);
 void _ogx_stencil_clear(void);
 
-bool _ogx_stencil_setup_tev(int *stages, int *tex_coords, int tex_map);
+bool _ogx_stencil_setup_tev(int *stages, int *tex_coords,
+                            int *tex_map, int *tex_mtxs);
 
 /* This callback should draw the current primitive with no color, lighting or
  * textures */

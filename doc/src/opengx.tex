@@ -422,6 +422,7 @@ The HANDLE\_CALL\_LIST macro is called at the beginning of those GL functions th
 The stencil test allows to discard individual fragments depending on the outcome of a comparison between the value stored in the stencil buffer for that fragment and a reference value. The compared values can also be masked with a bitmask before comparison, and the generation of the stencil buffer involves drawing primitives and performing logical and arithmetical operations on the drawn stencil pixels. The stencil test is typically used to render shadows and reflections. Unfortunately, nor the GameCube hardware or the GX APIs provide any support for the stencil test, so we have to emulate it, partially in software, partially with an additional TEV stage.
 
 \subsubsection {Discarding fragments}
+\label{sec:stencildiscard}
 
 Let's first see how opengx discards fragments which don't pass the stencil test; for the time being, let's assume that we have managed to build a stencil buffer (in opengx it can be 4 or 8 bits wide, with 4 being the default) and focus only on how to build a TEV stage which does the comparison and discards the fragment. We will be setting up the TEV stage to operate in \emph{compare mode}, where the inputs are combined according to this formula:
 
@@ -471,6 +472,31 @@ OpenGL specifies several logical and arithmetical operations that can be applied
 \label{sec:stencillimitations}
 
 The stencil drawing operations \lstinline{GL_INCR}, \lstinline{GL_DECR}, \lstinline{GL_INCR_WRAP}, \lstinline{GL_DECR_WRAP} and \lstinline{GL_INVERT} are not implemented. It might be possible that at least some of them could be implemented in the hardware by setting an appropriate blending mode. Another posibility is to make these functions not directly render on the stencil buffer, but on yet another offscreen buffer, and then process the results in software. But none of these solutions have been implemented so far, given how rarely these operations are used (at least in public source code indexed by GitHub).
+
+
+\subsection {Clip planes}
+
+The OpenGL \fname{glClipPlane} function can be used to define a clip plane, which will “cut” the primitives drawn while it is enabled and will show only the part that is on the desired side of the plane. A plane is defined by a linear equation
+
+$$Ax + By + Cz + D = 0$$
+
+and the space of the visible (unclipped) points is defined by the corresponding expression
+
+$$Ax + By + Cz + D \geq 0$$
+
+More than a clipping plane can be defined (OpenGL specifies that implementations should support at least 6 of them), in which case the visible area is the intersection of all these spaces.
+
+The GX API does not offer such a functionality, but this doesn't mean that it cannot be implemented. The first idea was generating a Z-texture for each clipping plane, and then let the depth test exclude the fragments whose Z coordinate did not satisfy the requirements. Special care would have to be taken to support clipping planes intersecting the camera, because in those cases the Z-texture would have to be placed not as the plane itself, but as a semi-plane with the Z set to the maximum value in order to mask out all the unwanted fragments. But the hardest part would have been that of saving the original Z values from the EFB and then restoring them back at the end of the clipping operation, while updating the Z values of those fragments that had actually been drawn. As a solution to this problem was not found, the idea was dropped and the whole feature was deemed to be practically unfeasible.
+
+After implementing the stencil test, though, another implementation idea was born: if we did encode the $A$, $B$, $C$, $D$ coefficient of the clipping plane as the first row of the texture coordinate generation matrix, and used the fragment's position as the input source for the texture coordinate generation, the $s$ texture coordinate we would be generating would be
+
+$$s = Ax + By + Cy + Dw$$
+
+which, given that $w = 1$, would effectively be the computation of the clipping equation: we would get an $s \geq 0$ for those fragments that can be drawn, and $s < 0$ for those who need to be clipped out. Sure, texture coordinates are only meaningful in the range $[0,1]$ so a negative $s$ would wrap or be clamped within this interval, but this can be solved by applying a translation of $0.5$ as the last step of the texture coordinate generation in order to have our conditions changed to $s \geq 0.5$ for the visible fragments and $s < 0.5$ for the invisible ones. At this point, we could use this $s$ coordinate on a very small texture, just two texels wide, with an alpha value of 0 on the left texel and 1 on the right one, and use a TEV stage setup similarly to that described in the \ref{sec:stencildiscard} section to drop all fragments which produce a zero alpha value. Note that we need to set the texture coordinates to be clamped (and not wrapped!), so that any value of $s$ bigger than $0.5$ renders a pixel with full alpha, and any value of $s$ smaller than $0.5$ renders a transparent (discarded) pixel.
+
+Furthermore, we can improve this solution by encoding another clip plane in the second row of the texture coordinate generation matrix (which is responsible for generating the $t$ texture coordinate), and then we can handle two clipping planes in a single TEV stage: we just need to prepare a 2-by-2 pixel texture, having an alpha value of $0$ in three of its pixels, and $1$ in the one pixel for which both $s$ and $t$ are positive.
+
+At the moment opengx hardcodes the maximum number of supported clip planes to 6 (which require 3 TEV stages), but this can be increased if needed. Note that only the required number of TEV stages needed to perform the clipping operations is used.
 
 
 \subsection {Selection mode}
