@@ -125,6 +125,7 @@ typedef struct glparams_
     GLenum glcullmode;
     GLenum render_mode;
     GLenum active_buffer; /* no separate buffers for reading and writing */
+    GLenum polygon_mode;
     int glcurtex;
     int draw_count;
     GXColor clear_color;
@@ -182,6 +183,7 @@ typedef struct glparams_
         GLenum prim_type;
         unsigned in_gl_begin : 1;
         unsigned has_color : 1;
+        unsigned has_normal : 1;
     } imm_mode;
 
     union dirty_union

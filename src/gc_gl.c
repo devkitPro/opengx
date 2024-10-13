@@ -72,13 +72,8 @@ typedef struct
     uint8_t specular_mask;
 } LightMasks;
 
-typedef struct
-{
-    uint8_t mode;
-    bool loop;
-} DrawMode;
-
 char _ogx_log_level = 0;
+uint16_t _ogx_draw_sync_token = 0;
 static OgxEfbBuffer *s_efb_scene_buffer = NULL;
 static GXTexObj s_zbuffer_texture;
 static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
@@ -230,6 +225,7 @@ void ogx_initialize()
     glparamstate.glcullmode = GL_BACK;
     glparamstate.render_mode = GL_RENDER;
     glparamstate.cullenabled = 0;
+    glparamstate.polygon_mode = GL_FILL;
     glparamstate.color_update = true;
     glparamstate.alpha_func = GX_ALWAYS;
     glparamstate.alpha_ref = 0;
@@ -908,6 +904,7 @@ void glBegin(GLenum mode)
     glparamstate.imm_mode.prim_type = mode;
     glparamstate.imm_mode.in_gl_begin = 1;
     glparamstate.imm_mode.has_color = 0;
+    glparamstate.imm_mode.has_normal = 0;
     if (!glparamstate.imm_mode.current_vertices) {
         int count = 64;
         warning("First malloc %d", errno);
@@ -944,7 +941,7 @@ void glEnd()
     _ogx_array_reader_set_num_elements(&glparamstate.vertex_array, 3);
     glparamstate.cs.texcoord_enabled = 1;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
-    glparamstate.cs.normal_enabled = 1;
+    glparamstate.cs.normal_enabled = glparamstate.imm_mode.has_normal;
     glparamstate.cs.vertex_enabled = 1;
     glDrawArrays(glparamstate.imm_mode.prim_type, 0, glparamstate.imm_mode.current_numverts);
     glparamstate.cs = cs_backup;
@@ -1439,6 +1436,16 @@ void glLineWidth(GLfloat width)
     GX_SetLineWidth((unsigned int)(width * 16), GX_TO_ZERO);
 }
 
+void glPolygonMode(GLenum face, GLenum mode)
+{
+    if (face != GL_FRONT_AND_BACK) {
+        warning("glPolygonMode: face selection is unsupported");
+        return;
+    }
+
+    glparamstate.polygon_mode = mode;
+}
+
 void glPolygonOffset(GLfloat factor, GLfloat units)
 {
     glparamstate.polygon_offset_factor = factor;
@@ -1855,9 +1862,20 @@ static LightMasks prepare_lighting()
     return masks;
 }
 
-static DrawMode draw_mode(GLenum mode)
+DrawMode _ogx_draw_mode(GLenum mode)
 {
     DrawMode dm = { 0xff, false };
+
+    if (glparamstate.polygon_mode != GL_FILL) {
+        if (glparamstate.polygon_mode == GL_POINT) {
+            dm.mode = GX_POINTS;
+        } else { // GL LINE
+            dm.mode = GX_LINESTRIP;
+            dm.loop = true;
+        }
+        return dm;
+    }
+
     switch (mode) {
     case GL_POINTS:
         dm.mode = GX_POINTS;
@@ -2385,30 +2403,27 @@ void glArrayElement(GLint i)
 
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-    DrawMode gxmode = draw_mode(mode);
+    DrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
+    HANDLE_CALL_LIST(DRAW_ARRAYS, mode, first, count);
+
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;
-    if (glparamstate.current_call_list.index >= 0 &&
-        glparamstate.current_call_list.execution_depth == 0) {
-        _ogx_call_list_append(COMMAND_GXLIST);
-    } else {
-        if (glparamstate.stencil.enabled) {
-            OgxDrawData draw_data = { gxmode, first, count };
-            _ogx_stencil_draw(flat_draw_geometry, &draw_data);
-        }
-
-        _ogx_efb_set_content_type(OGX_EFB_SCENE);
-        should_draw = _ogx_setup_render_stages();
-        _ogx_apply_state();
-
-        /* When not building a display list, we can optimize the drawing by
-         * avoiding passing texture coordinates if texturing is not enabled.
-         */
-        texen = texen && glparamstate.texture_enabled;
+    if (glparamstate.stencil.enabled) {
+        OgxDrawData draw_data = { gxmode, first, count };
+        _ogx_stencil_draw(flat_draw_geometry, &draw_data);
     }
+
+    _ogx_efb_set_content_type(OGX_EFB_SCENE);
+    should_draw = _ogx_setup_render_stages();
+    _ogx_apply_state();
+
+    /* When not building a display list, we can optimize the drawing by
+     * avoiding passing texture coordinates if texturing is not enabled.
+     */
+    texen = texen && glparamstate.texture_enabled;
 
     if (should_draw) {
         int color_provide = 0;
@@ -2428,29 +2443,26 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
 {
-    DrawMode gxmode = draw_mode(mode);
+    DrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
+    HANDLE_CALL_LIST(DRAW_ELEMENTS, mode, count, type, indices);
+
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;
-    if (glparamstate.current_call_list.index >= 0 &&
-        glparamstate.current_call_list.execution_depth == 0) {
-        _ogx_call_list_append(COMMAND_GXLIST);
-    } else {
-        if (glparamstate.stencil.enabled) {
-            OgxDrawElementsData draw_data = { gxmode, count, type, indices };
-            _ogx_stencil_draw(flat_draw_elements, &draw_data);
-        }
-
-        _ogx_efb_set_content_type(OGX_EFB_SCENE);
-        should_draw = _ogx_setup_render_stages();
-        _ogx_apply_state();
-        /* When not building a display list, we can optimize the drawing by
-         * avoiding passing texture coordinates if texturing is not enabled.
-         */
-        texen = texen && glparamstate.texture_enabled;
+    if (glparamstate.stencil.enabled) {
+        OgxDrawElementsData draw_data = { gxmode, count, type, indices };
+        _ogx_stencil_draw(flat_draw_elements, &draw_data);
     }
+
+    _ogx_efb_set_content_type(OGX_EFB_SCENE);
+    should_draw = _ogx_setup_render_stages();
+    _ogx_apply_state();
+    /* When not building a display list, we can optimize the drawing by
+     * avoiding passing texture coordinates if texturing is not enabled.
+     */
+    texen = texen && glparamstate.texture_enabled;
 
     if (should_draw) {
         int color_provide = 0;
@@ -2599,7 +2611,6 @@ void glPushAttrib(GLbitfield mask) {}
 void glPopAttrib(void) {}
 void glPushClientAttrib(GLbitfield mask) {}
 void glPopClientAttrib(void) {}
-void glPolygonMode(GLenum face, GLenum mode) {}
 void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *data) {}
 
 /*

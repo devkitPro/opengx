@@ -105,7 +105,17 @@ typedef struct
             GLfloat z;
         } rotate;
 
+        struct DrawGeometry {
+            GLenum mode;
+            uint16_t count;
+            struct client_state cs;
+            u32 list_size;
+            void *gxlist;
+        } draw_geometry;
+
         float color[4];
+
+        float normal[3];
 
         float matrix[16];
     } c;
@@ -123,6 +133,10 @@ typedef struct
 } CallList;
 
 static CallList call_lists[MAX_CALL_LISTS];
+static GXColor s_current_color;
+static float s_current_normal[3];
+static bool s_last_draw_used_indexed_data = false;
+static uint16_t s_last_draw_sync_token = 0;
 
 #define BUFFER_IS_VALID(buffer) (((uint32_t)buffer) > 1)
 #define LIST_IS_USED(index) BUFFER_IS_VALID(call_lists[index].head)
@@ -185,37 +199,130 @@ static Command *new_command(CommandBuffer **head)
     }
 }
 
-static void flat_draw_list(void *cb_data)
+static void execute_draw_geometry_list(struct DrawGeometry *dg)
 {
-    struct GXDisplayList *gxlist = cb_data;
+    static uint16_t counter = 0;
+    u8 vtxindex = GX_VTXFMT0;
+    GXColor current_color;
 
-    GX_CallDispList(gxlist->list, gxlist->size);
+    bool uses_indexed_data = !dg->cs.normal_enabled || !dg->cs.color_enabled;
+    if (uses_indexed_data && s_last_draw_used_indexed_data) {
+        bool data_changed = false;
+        /* If the indexed data has changed, we need to wait until the previous
+         * list has completed its execution, because changing the data under
+         * its feet will cause rendering issues. */
+        if (!dg->cs.color_enabled) {
+            current_color = gxcol_new_fv(glparamstate.imm_mode.current_color);
+            if (!gxcol_equal(current_color, s_current_color)) data_changed = true;
+        }
+
+        if (!dg->cs.normal_enabled) {
+            if (memcmp(s_current_normal, glparamstate.imm_mode.current_normal,
+                       sizeof(s_current_normal)) != 0)
+                data_changed = true;
+        }
+
+        if (data_changed) {
+            // Wait
+            while (GX_GetDrawSync() < s_last_draw_sync_token);
+        }
+    }
+
+    GX_ClearVtxDesc();
+    GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+    if (dg->cs.normal_enabled) {
+        GX_SetVtxDesc(GX_VA_NRM, GX_DIRECT);
+    } else {
+        GX_SetVtxDesc(GX_VA_NRM, GX_INDEX8);
+        GX_SetArray(GX_VA_NRM, s_current_normal, 12);
+        floatcpy(s_current_normal, glparamstate.imm_mode.current_normal, 3);
+        /* Not needed on Dolphin, but it is on a Wii */
+        DCStoreRange(s_current_normal, 12);
+    }
+    if (dg->cs.color_enabled) {
+        GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+        GX_SetVtxDesc(GX_VA_CLR1, GX_DIRECT);
+    } else {
+        GX_SetVtxDesc(GX_VA_CLR0, GX_INDEX8);
+        GX_SetVtxDesc(GX_VA_CLR1, GX_INDEX8);
+        s_current_color = current_color;
+        GX_SetArray(GX_VA_CLR0, &s_current_color, 4);
+        GX_SetArray(GX_VA_CLR1, &s_current_color, 4);
+        DCStoreRange(&s_current_color, 4);
+    }
+
+    /* It makes no sense to use a fixed texture coordinates for all vertices,
+     * so we won't add them unless they are enabled. */
+    if (dg->cs.texcoord_enabled) {
+        GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+        GX_SetVtxAttrFmt(vtxindex, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+    }
+
+    GX_SetVtxAttrFmt(vtxindex, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GX_SetVtxAttrFmt(vtxindex, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
+    GX_SetVtxAttrFmt(vtxindex, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+    GX_SetVtxAttrFmt(vtxindex, GX_VA_CLR1, GX_CLR_RGBA, GX_RGBA8, 0);
+    GX_InvVtxCache();
+
+    GX_CallDispList(dg->gxlist, dg->list_size);
+
+    if (uses_indexed_data) {
+        s_last_draw_sync_token = send_draw_sync_token();
+        s_last_draw_used_indexed_data = true;
+    } else {
+        s_last_draw_used_indexed_data = false;
+    }
 }
 
-static void run_gx_list(struct GXDisplayList *gxlist)
+static void flat_draw_geometry(void *cb_data)
+{
+    struct DrawGeometry *dg = cb_data;
+    execute_draw_geometry_list(dg);
+}
+
+static void run_draw_geometry(struct DrawGeometry *dg)
 {
     struct client_state cs;
+
+    /* Update the drawing mode on the list. This required peeping into
+     * GX_Begin() code. */
+    DrawMode gxmode = _ogx_draw_mode(dg->mode);
+    u8 *fifo_ptr = dg->gxlist;
+    u8 mode_opcode = gxmode.mode | (GX_VTXFMT0 & 0x7);
+    if (*fifo_ptr != mode_opcode) {
+        /* Before altering the list, we need to make sure that it's not in use
+         * by the GP.
+         * TODO: find a better criterium, to minimize waits */
+        GX_DrawDone();
+        *fifo_ptr = mode_opcode;
+        DCStoreRange(fifo_ptr, 32); // min size is 32
+    }
 
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
     cs = glparamstate.cs;
-    glparamstate.cs = gxlist->cs;
+    glparamstate.cs = dg->cs;
     _ogx_apply_state();
     _ogx_setup_render_stages();
     glparamstate.cs = cs;
-    GX_CallDispList(gxlist->list, gxlist->size);
+
+    execute_draw_geometry_list(dg);
+
     glparamstate.draw_count++;
 
     if (glparamstate.stencil.enabled) {
-        _ogx_stencil_draw(flat_draw_list, gxlist);
+        _ogx_stencil_draw(flat_draw_geometry, dg);
     }
 }
 
 static void run_command(Command *cmd)
 {
     switch (cmd->type) {
-    case COMMAND_GXLIST:
-        run_gx_list(&cmd->c.gxlist);
+    case COMMAND_DRAW_ARRAYS:
+        run_draw_geometry(&cmd->c.draw_geometry);
+        break;
+    case COMMAND_DRAW_ELEMENTS:
+        run_draw_geometry(&cmd->c.draw_geometry);
         break;
     case COMMAND_CALL_LIST:
         glCallList(cmd->c.gllist);
@@ -273,51 +380,108 @@ static void run_command(Command *cmd)
     case COMMAND_COLOR:
         glColor4fv(cmd->c.color);
         break;
+    case COMMAND_NORMAL:
+        glNormal3fv(cmd->c.normal);
+        break;
     }
-
 }
 
-static void open_gxlist(Command *command)
+typedef int (*IndexCallback)(int i, void *index_data);
+
+static int draw_array_index_cb(int i, void *index_data)
 {
-    command->type = COMMAND_GXLIST;
-    command->c.gxlist.size = 0;
-    command->c.gxlist.list = memalign(32, MAX_GXLIST_SIZE);
-    DCInvalidateRange(command->c.gxlist.list, MAX_GXLIST_SIZE);
-    /* Save the client state */
-    command->c.gxlist.cs = glparamstate.cs;
-    GX_BeginDispList(command->c.gxlist.list, MAX_GXLIST_SIZE);
+    int first = *(int*)index_data;
+    return i + first;
 }
 
-static void close_gxlist(Command *command)
+typedef struct {
+    GLenum type;
+    const GLvoid *indices;
+} DrawElementsIndexData;
+
+static int draw_elements_index_cb(int i, void *index_data)
 {
+    const DrawElementsIndexData *id = (DrawElementsIndexData*)index_data;
+    return read_index(id->indices, id->type, i);
+}
+
+static void queue_draw_geometry(struct DrawGeometry *dg,
+                                GLenum mode, GLsizei count,
+                                IndexCallback index_cb,
+                                void *index_data)
+{
+    /* When executing a display list containing glDrawElements() or
+     * glDrawArrays() all the attributes that were not enabled at the time of
+     * the list creation should be taken from the current active attribute
+     * (color, normals and texture coordinates). Since we are not be able to
+     * modify a GX list to add more attributes, we'll add them now as indexed
+     * attributes: this will allow us to set the value of the indexed attribute
+     * at the time when the list is executed. */
+    dg->mode = mode;
+    dg->gxlist = memalign(32, MAX_GXLIST_SIZE);
+    DCInvalidateRange(dg->gxlist, MAX_GXLIST_SIZE);
+    dg->cs = glparamstate.cs;
+    DrawMode gxmode = _ogx_draw_mode(mode);
+    dg->count = count + gxmode.loop;
+
+    GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
+
+    /* Note that the drawing mode set here will be overwritten when executing the list */
+
+    GX_Begin(gxmode.mode, GX_VTXFMT0, dg->count);
+    for (int i = 0; i < dg->count; i++) {
+        int index = index_cb(i % count, index_data);
+        float value[4];
+        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, index, value);
+
+        GX_Position3f32(value[0], value[1], value[2]);
+
+        if (dg->cs.normal_enabled) {
+            _ogx_array_reader_read_norm3f(&glparamstate.normal_array, index, value);
+            GX_Normal3f32(value[0], value[1], value[2]);
+        } else {
+            GX_Normal1x8(0);
+        }
+
+        if (dg->cs.color_enabled) {
+            GXColor color;
+            _ogx_array_reader_read_color(&glparamstate.color_array, index, &color);
+            GX_Color4u8(color.r, color.g, color.b, color.a); // CLR0
+            GX_Color4u8(color.r, color.g, color.b, color.a); // CLR1
+        } else {
+            GX_Color1x8(0); // CLR0
+            GX_Color1x8(0); // CLR1
+        }
+
+        if (dg->cs.texcoord_enabled) {
+            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array, index, value);
+            GX_TexCoord2f32(value[0], value[1]);
+        }
+    }
+    GX_End();
+
     u32 size = GX_EndDispList();
+    fprintf(stderr, "Created draw list %u\n", size);
     /* Free any excess memory */
-    command->c.gxlist.size = size;
-    void *new_ptr = realloc(command->c.gxlist.list, size);
-    assert(new_ptr == command->c.gxlist.list);
-
-    if (glparamstate.current_call_list.must_execute) {
-        GX_CallDispList(command->c.gxlist.list, command->c.gxlist.size);
-    }
+    void *new_ptr = realloc(dg->gxlist, size);
+    assert(new_ptr == dg->gxlist);
+    dg->list_size = size;
 }
 
-static void close_list(int index)
+static void queue_draw_arrays(struct DrawGeometry *dg,
+                              GLenum mode, GLint first, GLsizei count)
 {
-    CallList *list = &call_lists[index];
-    if (!LIST_IS_USED(index)) return;
+    queue_draw_geometry(dg, mode, count,
+                        draw_array_index_cb, &first);
+}
 
-    CommandBuffer *buffer = list->head;
-    int i = last_command(&buffer);
-    if (i < 0) {
-        /* The list is empty */
-        return;
-    }
-
-    Command *command = &buffer->commands[i];
-    if (command->type == COMMAND_GXLIST) {
-        close_gxlist(command);
-    }
-
+static void queue_draw_elements(struct DrawGeometry *dg,
+                                GLenum mode, GLsizei count, GLenum type,
+                                const GLvoid *indices)
+{
+    DrawElementsIndexData id = { type, indices };
+    queue_draw_geometry(dg, mode, count,
+                        draw_elements_index_cb, &id);
 }
 
 static void destroy_buffer(CommandBuffer *buffer)
@@ -331,9 +495,9 @@ static void destroy_buffer(CommandBuffer *buffer)
         if (command->type == COMMAND_NONE) break;
 
         /* Free the memory for those commands who allocated it */
-        if (command->type == COMMAND_GXLIST) {
-            void *ptr = command->c.gxlist.list;
-            if (ptr) free(ptr);
+        if (command->type == COMMAND_DRAW_ELEMENTS ||
+            command->type == COMMAND_DRAW_ARRAYS) {
+            free(command->c.draw_geometry.gxlist);
         }
     }
     free(buffer);
@@ -367,33 +531,32 @@ bool _ogx_call_list_append(CommandType op, ...)
 
     debug(OGX_LOG_CALL_LISTS, "Adding command %d to list %d",
           op, glparamstate.current_call_list.index);
-    int index = last_command(&buffer);
-    if (index >= 0) {
-        command = &buffer->commands[index];
-        if (command->type == COMMAND_GXLIST) {
-            if (op == COMMAND_GXLIST) {
-                /* If we are already inside a GX display list, nothing to do here */
-                return true;
-            } else {
-                /* End the GX display list operation if one was active */
-                close_gxlist(command);
-            }
-        }
-    }
 
-    if (op == COMMAND_GXLIST) {
-        command = new_command(&list->head);
-        open_gxlist(command);
-        return true;
-    }
-
-    /* In all other cases, we are adding the command to the list */
     command = new_command(&list->head);
     command->type = op;
     va_start(ap, op);
     switch (op) {
     case COMMAND_CALL_LIST:
         command->c.gllist = va_arg(ap, GLuint);
+        break;
+    case COMMAND_DRAW_ARRAYS:
+        {
+            GLenum mode = va_arg(ap, GLenum);
+            GLint first = va_arg(ap, GLint);
+            GLsizei count = va_arg(ap, GLsizei);
+            queue_draw_arrays(&command->c.draw_geometry,
+                              mode, first, count);
+        }
+        break;
+    case COMMAND_DRAW_ELEMENTS:
+        {
+            GLenum mode = va_arg(ap, GLenum);
+            GLsizei count = va_arg(ap, GLsizei);
+            GLenum type = va_arg(ap, GLenum);
+            const GLvoid *indices = va_arg(ap, GLvoid *);
+            queue_draw_elements(&command->c.draw_geometry,
+                                mode, count, type, indices);
+        }
         break;
     case COMMAND_ENABLE:
     case COMMAND_DISABLE:
@@ -468,6 +631,9 @@ bool _ogx_call_list_append(CommandType op, ...)
         break;
     case COMMAND_COLOR:
         floatcpy(command->c.color, va_arg(ap, GLfloat *), 4);
+        break;
+    case COMMAND_NORMAL:
+        floatcpy(command->c.normal, va_arg(ap, GLfloat *), 3);
         break;
     }
     va_end(ap);
@@ -572,7 +738,6 @@ void glEndList(void)
         return;
     }
 
-    close_list(glparamstate.current_call_list.index);
     GLuint list = glparamstate.current_call_list.index + CALL_LIST_START_ID;
     glparamstate.current_call_list.index = -1;
     glparamstate.current_call_list.execution_depth = 0;

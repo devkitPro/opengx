@@ -111,7 +111,7 @@ void _ogx_efb_buffer_prepare(OgxEfbBuffer **buffer, uint8_t format)
 
     u16 width = glparamstate.viewport[2];
     u16 height = glparamstate.viewport[3];
-    u32 size = GX_GetTexBufferSize(width, height, GX_TF_RGBA8, 0, GX_FALSE);
+    u32 size = GX_GetTexBufferSize(width, height, format, 0, GX_FALSE);
     OgxEfbBuffer *b = memalign(32, size + sizeof(OgxEfbBuffer));
     void *texels = &(b->texels[0]);
     DCInvalidateRange(texels, size);
@@ -151,5 +151,6 @@ void _ogx_efb_buffer_save(OgxEfbBuffer *buffer, OgxEfbFlags flags)
     u16 width, height;
     GX_GetTexObjAll(&buffer->texobj, &texels, &width, &height, &format,
                     &unused, &unused, &unused);
+    texels = MEM_PHYSICAL_TO_K0(texels);
     _ogx_efb_save_to_buffer(format, width, height, texels, flags);
 }

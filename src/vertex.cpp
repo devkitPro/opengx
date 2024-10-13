@@ -251,9 +251,8 @@ void glNormal3d(GLdouble nx, GLdouble ny, GLdouble nz)
 
 void glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz)
 {
-    glparamstate.imm_mode.current_normal[0] = nx;
-    glparamstate.imm_mode.current_normal[1] = ny;
-    glparamstate.imm_mode.current_normal[2] = nz;
+    float v[3] = { nx, ny, nz };
+    glNormal3fv(v);
 }
 
 void glNormal3i(GLint nx, GLint ny, GLint nz)
@@ -278,7 +277,12 @@ void glNormal3dv(const GLdouble *v)
 
 void glNormal3fv(const GLfloat *v)
 {
-    glNormal3f(v[0], v[1], v[2]);
+    if (glparamstate.imm_mode.in_gl_begin) {
+        glparamstate.imm_mode.has_normal = 1;
+    } else {
+        HANDLE_CALL_LIST(NORMAL, v);
+    }
+    floatcpy(glparamstate.imm_mode.current_normal, v, 3);
 }
 
 void glNormal3iv(const GLint *v)

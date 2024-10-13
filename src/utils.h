@@ -125,6 +125,11 @@ static inline void mtx44project(const Mtx44 p, const guVector *v,
     }
 }
 
+static inline bool gxcol_equal(GXColor a, GXColor b)
+{
+    return *(int32_t*)&a == *(int32_t*)&b;
+}
+
 static inline GXColor gxcol_new_fv(float *components)
 {
     GXColor c = {
@@ -159,6 +164,14 @@ static inline void set_error(GLenum code)
     if (!glparamstate.error) {
         glparamstate.error = code;
     }
+}
+
+extern uint16_t _ogx_draw_sync_token;
+static inline uint16_t send_draw_sync_token()
+{
+    uint16_t token = ++_ogx_draw_sync_token;
+    GX_SetDrawSync(token);
+    return token;
 }
 
 typedef void (*ForeachCb)(GLuint value);
@@ -289,6 +302,14 @@ static inline GLenum gl_compare_from_gx(uint8_t func)
     default: return GL_NEVER;
     }
 }
+
+typedef struct
+{
+    uint8_t mode;
+    bool loop;
+} DrawMode;
+
+DrawMode _ogx_draw_mode(GLenum mode);
 
 /* Set up the matrices for 2D pixel-perfect drawing */
 void _ogx_setup_2D_projection(void);
