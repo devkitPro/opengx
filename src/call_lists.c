@@ -229,9 +229,9 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
     }
 
     GX_ClearVtxDesc();
-    GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+    _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
     if (dg->cs.normal_enabled) {
-        GX_SetVtxDesc(GX_VA_NRM, GX_DIRECT);
+        _ogx_array_reader_setup_draw(&glparamstate.normal_array);
     } else {
         GX_SetVtxDesc(GX_VA_NRM, GX_INDEX8);
         GX_SetArray(GX_VA_NRM, s_current_normal, 12);
@@ -240,8 +240,7 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         DCStoreRange(s_current_normal, 12);
     }
     if (dg->cs.color_enabled) {
-        GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
-        GX_SetVtxDesc(GX_VA_CLR1, GX_DIRECT);
+        _ogx_array_reader_setup_draw_color(&glparamstate.color_array, true);
     } else {
         GX_SetVtxDesc(GX_VA_CLR0, GX_INDEX8);
         GX_SetVtxDesc(GX_VA_CLR1, GX_INDEX8);
@@ -254,14 +253,9 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
     /* It makes no sense to use a fixed texture coordinates for all vertices,
      * so we won't add them unless they are enabled. */
     if (dg->cs.texcoord_enabled) {
-        GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
-        GX_SetVtxAttrFmt(vtxindex, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+        _ogx_array_reader_setup_draw(&glparamstate.texcoord_array);
     }
 
-    GX_SetVtxAttrFmt(vtxindex, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
-    GX_SetVtxAttrFmt(vtxindex, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
-    GX_SetVtxAttrFmt(vtxindex, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
-    GX_SetVtxAttrFmt(vtxindex, GX_VA_CLR1, GX_CLR_RGBA, GX_RGBA8, 0);
     GX_InvVtxCache();
 
     GX_CallDispList(dg->gxlist, dg->list_size);
@@ -424,6 +418,10 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     DrawMode gxmode = _ogx_draw_mode(mode);
     dg->count = count + gxmode.loop;
 
+    if (dg->cs.color_enabled) {
+        _ogx_array_reader_enable_dup_color(&glparamstate.color_array, true);
+    }
+
     GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
 
     /* Note that the drawing mode set here will be overwritten when executing the list */
@@ -432,30 +430,23 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     for (int i = 0; i < dg->count; i++) {
         int index = index_cb(i % count, index_data);
         float value[4];
-        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, index, value);
-
-        GX_Position3f32(value[0], value[1], value[2]);
+        _ogx_array_reader_process_element(&glparamstate.vertex_array, index);
 
         if (dg->cs.normal_enabled) {
-            _ogx_array_reader_read_norm3f(&glparamstate.normal_array, index, value);
-            GX_Normal3f32(value[0], value[1], value[2]);
+            _ogx_array_reader_process_element(&glparamstate.normal_array, index);
         } else {
             GX_Normal1x8(0);
         }
 
         if (dg->cs.color_enabled) {
-            GXColor color;
-            _ogx_array_reader_read_color(&glparamstate.color_array, index, &color);
-            GX_Color4u8(color.r, color.g, color.b, color.a); // CLR0
-            GX_Color4u8(color.r, color.g, color.b, color.a); // CLR1
+            _ogx_array_reader_process_element(&glparamstate.color_array, index);
         } else {
             GX_Color1x8(0); // CLR0
             GX_Color1x8(0); // CLR1
         }
 
         if (dg->cs.texcoord_enabled) {
-            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array, index, value);
-            GX_TexCoord2f32(value[0], value[1]);
+            _ogx_array_reader_process_element(&glparamstate.texcoord_array, index);
         }
     }
     GX_End();

@@ -31,56 +31,124 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "arrays.h"
 
 #include "debug.h"
+#include "state.h"
 
 #include <limits>
+#include <ogc/gx.h>
 #include <variant>
 
 typedef float Pos3f[3];
 typedef float Norm3f[3];
 typedef float Tex2f[2];
 
-struct GenericDataReaderBase {
-    GenericDataReaderBase(int stride, int element_size):
-        given_stride(stride), element_size(element_size) {}
+struct GxVertexFormat {
+    uint8_t attribute;
+    char num_components;
+    uint8_t type;
+    uint8_t size;
+};
 
-    virtual void read_float(int index, float *elements) = 0;
+struct TemplateSelectionInfo {
+    GxVertexFormat format;
+    bool same_type;
+};
+
+static uint8_t gl_type_to_gx_size(GLenum type)
+{
+    switch (type) {
+    case GL_SHORT: return GX_S16;
+    case GL_FLOAT: return GX_F32;
+    }
+    return 0xff;
+}
+
+static TemplateSelectionInfo select_template(GLenum type,
+                                             uint8_t vertex_attribute,
+                                             char num_components)
+{
+    TemplateSelectionInfo info = {
+        {vertex_attribute, num_components, 0xff, 0xff},
+    };
+    switch (vertex_attribute) {
+    case GX_VA_POS:
+        info.format.type = num_components == 2 ? GX_POS_XY : GX_POS_XYZ;
+        info.format.size = gl_type_to_gx_size(type);
+        info.same_type = num_components <= 3;
+        break;
+    case GX_VA_NRM:
+        info.format.type = GX_NRM_XYZ;
+        info.format.size = gl_type_to_gx_size(type);
+        info.same_type = num_components == 3;
+        break;
+    case GX_VA_TEX0:
+        info.format.type = num_components == 1 ? GX_TEX_S : GX_TEX_ST;
+        info.format.size = gl_type_to_gx_size(type);
+        info.same_type = num_components <= 2;
+        break;
+    case GX_VA_CLR0:
+    case GX_VA_CLR1:
+        if (num_components == 4) {
+            info.format.type = GX_CLR_RGBA;
+            info.format.size = GX_RGBA8;
+        } else {
+            info.format.type = GX_CLR_RGB;
+            info.format.size = GX_RGB8;
+        }
+        info.same_type = type == GL_UNSIGNED_BYTE;
+        break;
+    }
+
+    if (info.format.size == 0xff) {
+        info.format.size = GX_F32;
+        info.same_type = false;
+    }
+    return info;
+}
+
+struct VertexReaderBase {
+    VertexReaderBase(GxVertexFormat format, const void *data, int stride):
+        format(format),
+        data(static_cast<const char *>(data)),
+        stride(stride), dup_color(false) {}
+
+    void setup_draw() {
+        GX_SetVtxDesc(format.attribute, GX_DIRECT);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
+                         format.type, format.size, 0);
+        if (dup_color) {
+            GX_SetVtxDesc(format.attribute + 1, GX_DIRECT);
+            GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute + 1,
+                             format.type, format.size, 0);
+        }
+    }
+
+    void enable_duplicate_color(bool dup_color) {
+        this->dup_color = dup_color;
+    }
+
+    virtual void process_element(int index) = 0;
+
     virtual void read_color(int index, GXColor *color) = 0;
     virtual void read_pos3f(int index, Pos3f pos) = 0;
     virtual void read_norm3f(int index, Norm3f norm) = 0;
     virtual void read_tex2f(int index, Tex2f tex) = 0;
 
-    void set_num_elements(int n) {
-        num_elements = n;
-    }
-
-    char element_size;
-    char num_elements = 1;
-    uint16_t given_stride = 0;
+    GxVertexFormat format;
+    const char *data;
+    uint16_t stride;
+    bool dup_color;
 };
 
 template <typename T>
-struct GenericDataReader: public GenericDataReaderBase {
-    GenericDataReader(const void *data, int stride):
-        GenericDataReaderBase(stride, sizeof(T)),
-        data(static_cast<const char *>(data))
-        {}
-
-    int compute_stride() const {
-        return given_stride != 0 ? given_stride : (sizeof(T) * num_elements);
+struct GenericVertexReader: public VertexReaderBase {
+    GenericVertexReader(GxVertexFormat format, const void *data, int stride):
+        VertexReaderBase(format, data,
+                         stride > 0 ? stride : sizeof(T) * format.num_components)
+    {
     }
 
     const T *elemAt(int index) {
-        int stride = compute_stride();
         return reinterpret_cast<const T*>(data + stride * index);
-    }
-
-    template <typename R>
-    void read(int index, R *elements) {
-        const T *ptr = elemAt(index);
-        for (int i = 0; i < num_elements; i++) {
-            elements[i] = *ptr;
-            ptr++;
-        }
     }
 
     uint8_t read_color_component(const T *ptr) {
@@ -92,16 +160,13 @@ struct GenericDataReader: public GenericDataReaderBase {
         }
     }
 
-    void read_float(int index, float *elements) override {
-        read(index, elements);
-    }
-
+    /* The following methods are only kept because of glArrayElement() */
     void read_color(int index, GXColor *color) override {
         const T *ptr = elemAt(index);
         color->r = read_color_component(ptr++);
         color->g = read_color_component(ptr++);
         color->b = read_color_component(ptr++);
-        color->a = num_elements == 4 ?
+        color->a = format.num_components == 4 ?
             read_color_component(ptr++) : 255;
     }
 
@@ -109,9 +174,9 @@ struct GenericDataReader: public GenericDataReaderBase {
         const T *ptr = elemAt(index);
         pos[0] = *ptr++;
         pos[1] = *ptr++;
-        if (num_elements >= 3) {
+        if (format.num_components >= 3) {
             pos[2] = *ptr++;
-            if (num_elements == 4) {
+            if (format.num_components == 4) {
                 float w = *ptr++;
                 pos[0] /= w;
                 pos[1] /= w;
@@ -132,86 +197,220 @@ struct GenericDataReader: public GenericDataReaderBase {
     void read_tex2f(int index, Tex2f tex) override {
         const T *ptr = elemAt(index);
         tex[0] = *ptr++;
-        if (num_elements >= 2) {
+        if (format.num_components >= 2) {
             tex[1] = *ptr++;
         } else {
             tex[1] = 0.0f;
         }
     }
-
-    const char *data;
 };
 
-using ReaderVariant = std::variant<OgxArrayReader,
-                                   GenericDataReaderBase,
-                                   GenericDataReader<float>,
-                                   GenericDataReader<double>,
-                                   GenericDataReader<uint8_t>,
-                                   GenericDataReader<int16_t>,
-                                   GenericDataReader<int32_t>>;
+template <typename T>
+struct SameTypeVertexReader: public GenericVertexReader<T> {
+    using GenericVertexReader<T>::GenericVertexReader;
+    using GenericVertexReader<T>::elemAt;
+    using GenericVertexReader<T>::format;
+
+    void process_element(int index) override {
+        const T *ptr = elemAt(index);
+        /* Directly write to the GX pipe. We don't really care if the values
+         * are signed or unsigned, integers or floating point: we already know
+         * that the attribute's type matches (or we wouldn't have selected the
+         * SameTypeVertexReader subclass), the only thing that matters is the
+         * size of the element that we put into the GX pipe. */
+        for (int i = 0; i < format.num_components; i++, ptr++) {
+            if constexpr (sizeof(T) == 1) {
+                wgPipe->U8 = *ptr;
+            } else if constexpr (sizeof(T) == 2) {
+                wgPipe->U16 = *ptr;
+            } else if constexpr (sizeof(T) == 4) {
+                wgPipe->F32 = *ptr;
+            }
+        }
+    }
+};
+
+template <typename T>
+struct ColorVertexReader: public GenericVertexReader<T> {
+    using GenericVertexReader<T>::GenericVertexReader;
+    using GenericVertexReader<T>::elemAt;
+    using GenericVertexReader<T>::format;
+    using GenericVertexReader<T>::read_color_component;
+
+    void process_element(int index) {
+        GXColor color;
+        const T *ptr = elemAt(index);
+        color.r = read_color_component(ptr++);
+        color.g = read_color_component(ptr++);
+        color.b = read_color_component(ptr++);
+        if (format.num_components == 4) {
+            color.a = read_color_component(ptr++);
+            GX_Color4u8(color.r, color.g, color.b, color.a);
+            if (this->dup_color)
+                GX_Color4u8(color.r, color.g, color.b, color.a);
+        } else {
+            GX_Color3u8(color.r, color.g, color.b);
+            if (this->dup_color)
+                GX_Color3u8(color.r, color.g, color.b);
+        }
+    }
+};
+
+template <typename T>
+struct CoordVertexReader: public GenericVertexReader<T> {
+    using GenericVertexReader<T>::elemAt;
+    using GenericVertexReader<T>::format;
+    using GenericVertexReader<T>::GenericVertexReader;
+
+    void process_element(int index) {
+        float x, y, z;
+        const T *ptr = elemAt(index);
+        x = *ptr++;
+        y = *ptr++;
+        if (format.num_components >= 3) {
+            z = *ptr++;
+            if (format.num_components == 4) {
+                float w = *ptr++;
+                x /= w;
+                y /= w;
+                z /= w;
+            }
+            GX_Position3f32(x, y, z);
+        } else {
+            GX_Position2f32(x, y);
+        }
+    }
+};
 
 void _ogx_array_reader_init(OgxArrayReader *reader,
-                                  const void *data,
-                                  GLenum type, int stride)
+                            uint8_t vertex_attribute,
+                            const void *data,
+                            int num_components, GLenum type, int stride)
 {
-    switch (type) {
-    case GL_UNSIGNED_BYTE:
-        new (reader) GenericDataReader<int8_t>(data, stride);
-        break;
-    case GL_SHORT:
-        new (reader) GenericDataReader<int16_t>(data, stride);
-        break;
-    case GL_INT:
-        new (reader) GenericDataReader<int32_t>(data, stride);
-        break;
-    case GL_FLOAT:
-        new (reader) GenericDataReader<float>(data, stride);
-        break;
-    case GL_DOUBLE:
-        new (reader) GenericDataReader<double>(data, stride);
-        break;
-    default:
-        warning("Unknown array data type %x\n", type);
+    TemplateSelectionInfo info =
+        select_template(type, vertex_attribute, num_components);
+    if (info.same_type) {
+        /* No conversions needed, just dump the data from the array directly
+         * into the GX pipe. */
+        switch (type) {
+        case GL_UNSIGNED_BYTE:
+            new (reader) SameTypeVertexReader<int8_t>(
+                info.format, data, stride);
+            return;
+        case GL_SHORT:
+            new (reader) SameTypeVertexReader<int16_t>(
+                info.format, data, stride);
+            return;
+        case GL_INT:
+            new (reader) SameTypeVertexReader<int32_t>(
+                info.format, data, stride);
+            return;
+        case GL_FLOAT:
+            new (reader) SameTypeVertexReader<float>(
+                info.format, data, stride);
+            return;
+        }
     }
+
+    if (vertex_attribute == GX_VA_CLR0 || vertex_attribute == GX_VA_CLR1) {
+        switch (type) {
+        /* The case GL_UNSIGNED_BYTE is handled by the SameTypeVertexReader */
+        case GL_BYTE:
+            new (reader) ColorVertexReader<char>(info.format, data, stride);
+            return;
+        case GL_SHORT:
+            new (reader) ColorVertexReader<int16_t>(info.format, data, stride);
+            return;
+        case GL_INT:
+            new (reader) ColorVertexReader<int32_t>(info.format, data, stride);
+            return;
+        case GL_FLOAT:
+            new (reader) ColorVertexReader<float>(info.format, data, stride);
+            return;
+        case GL_DOUBLE:
+            new (reader) ColorVertexReader<double>(info.format, data, stride);
+            return;
+        }
+    }
+
+    /* We can use the CoordVertexReader not only for positional
+     * coordinates, but also for normals and texture coordinates because
+     * the GX_Position*() functions are just storing floats into the GX
+     * pipe (that is, GX_Position2f32() behaves exactly like
+     * GX_TexCoord2f32()). */
+    switch (type) {
+    case GL_BYTE:
+        new (reader) CoordVertexReader<char>(info.format, data, stride);
+        return;
+    case GL_SHORT:
+        new (reader) CoordVertexReader<int16_t>(info.format, data, stride);
+        return;
+    case GL_INT:
+        new (reader) CoordVertexReader<int32_t>(info.format, data, stride);
+        return;
+    case GL_FLOAT:
+        new (reader) CoordVertexReader<float>(info.format, data, stride);
+        return;
+    case GL_DOUBLE:
+        new (reader) CoordVertexReader<double>(info.format, data, stride);
+        return;
+    }
+
+    warning("Unknown array data type %x for attribute %d\n",
+            type, vertex_attribute);
 }
 
-void _ogx_array_reader_set_num_elements(OgxArrayReader *reader, int n)
+void _ogx_array_reader_setup_draw(OgxArrayReader *reader)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
-    r->set_num_elements(n);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
+    r->setup_draw();
 }
 
-void _ogx_array_reader_read_float(OgxArrayReader *reader,
-                                  int index, float *elements)
+void _ogx_array_reader_setup_draw_color(OgxArrayReader *reader,
+                                        bool dup_color)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
-    r->read_float(index, elements);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
+    r->enable_duplicate_color(dup_color);
+    r->setup_draw();
+}
+
+void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
+                                        bool dup_color)
+{
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
+    r->enable_duplicate_color(dup_color);
+}
+
+void _ogx_array_reader_process_element(OgxArrayReader *reader, int index)
+{
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
+    r->process_element(index);
 }
 
 void _ogx_array_reader_read_pos3f(OgxArrayReader *reader,
                                   int index, float *pos)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->read_pos3f(index, pos);
 }
 
 void _ogx_array_reader_read_norm3f(OgxArrayReader *reader,
                                    int index, float *norm)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->read_norm3f(index, norm);
 }
 
 void _ogx_array_reader_read_tex2f(OgxArrayReader *reader,
                                   int index, float *tex)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->read_tex2f(index, tex);
 }
 
 void _ogx_array_reader_read_color(OgxArrayReader *reader,
                                   int index, GXColor *color)
 {
-    GenericDataReaderBase *r = reinterpret_cast<GenericDataReaderBase *>(reader);
+    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->read_color(index, color);
 }

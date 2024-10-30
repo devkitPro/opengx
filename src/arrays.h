@@ -45,11 +45,16 @@ typedef struct {
 } OgxArrayReader;
 
 void _ogx_array_reader_init(OgxArrayReader *reader,
+                            uint8_t vertex_attribute,
                             const void *data,
-                            GLenum type, int stride);
-void _ogx_array_reader_set_num_elements(OgxArrayReader *reader, int n);
-void _ogx_array_reader_read_float(OgxArrayReader *reader,
-                                  int index, float *elements);
+                            int num_components, GLenum type, int stride);
+void _ogx_array_reader_setup_draw(OgxArrayReader *reader);
+void _ogx_array_reader_setup_draw_color(OgxArrayReader *reader,
+                                        bool dup_color);
+void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
+                                        bool dup_color);
+void _ogx_array_reader_process_element(OgxArrayReader *reader, int index);
+
 void _ogx_array_reader_read_pos3f(OgxArrayReader *reader,
                                   int index, float *pos);
 void _ogx_array_reader_read_norm3f(OgxArrayReader *reader,
