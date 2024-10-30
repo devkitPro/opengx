@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define OGX_STATE_H
 
 #include "arrays.h"
+#include "types.h"
 
 #include <GL/gl.h>
 #include <gccore.h>
@@ -175,6 +176,9 @@ typedef struct glparams_
     uint16_t pack_image_height;
     uint16_t unpack_row_length;
     uint16_t unpack_image_height;
+
+    VboType bound_vbo_array;
+    VboType bound_vbo_element_array;
 
     struct imm_mode
     {

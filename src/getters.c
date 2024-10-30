@@ -160,6 +160,12 @@ void glGetFloatv(GLenum pname, GLfloat *params)
 void glGetIntegerv(GLenum pname, GLint *params)
 {
     switch (pname) {
+    case GL_ARRAY_BUFFER_BINDING:
+        *params = glparamstate.bound_vbo_array;
+        break;
+    case GL_ELEMENT_ARRAY_BUFFER_BINDING:
+        *params = glparamstate.bound_vbo_element_array;
+        break;
     case GL_AUX_BUFFERS:
         *params = 0;
         break;

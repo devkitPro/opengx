@@ -48,7 +48,9 @@ add_library(${TARGET} STATIC
     src/stencil.h
     src/texel.h
     src/texture.c
+    src/types.h
     src/utils.h
+    src/vbo.c
     src/vertex.cpp
 )
 set_target_properties(${TARGET} PROPERTIES
