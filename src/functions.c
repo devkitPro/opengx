@@ -28,6 +28,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
+#define GL_GLEXT_PROTOTYPES 1
 #include "opengx.h"
 
 #include <stdlib.h>
@@ -48,9 +49,13 @@ static const ProcMap s_proc_map[] = {
     PROC(glArrayElement),
     PROC(glBegin),
     PROC(glBegin),
+    //PROC(glBeginQuery), /* OpenGL 1.5 */
+    PROC(glBindBuffer), /* OpenGL 1.5 */
     PROC(glBindTexture),
     PROC(glBitmap),
     PROC(glBlendFunc),
+    PROC(glBufferData), /* OpenGL 1.5 */
+    PROC(glBufferSubData), /* OpenGL 1.5 */
     PROC(glCallList),
     PROC(glCallLists),
     PROC(glClear),
@@ -101,7 +106,9 @@ static const ProcMap s_proc_map[] = {
     //PROC(glCopyTexSubImage1D),
     //PROC(glCopyTexSubImage2D),
     PROC(glCullFace),
+    PROC(glDeleteBuffers), /* OpenGL 1.5 */
     PROC(glDeleteLists),
+    //PROC(glDeleteQueries), /* OpenGL 1.5 */
     PROC(glDeleteTextures),
     PROC(glDepthFunc),
     PROC(glDepthMask),
@@ -119,6 +126,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glEnableClientState),
     PROC(glEnd),
     PROC(glEndList),
+    //PROC(glEndQuery), /* OpenGL 1.5 */
     //PROC(glEvalCoord1d),
     //PROC(glEvalCoord1dv),
     //PROC(glEvalCoord1f),
@@ -140,9 +148,14 @@ static const ProcMap s_proc_map[] = {
     //PROC(glFogiv),
     PROC(glFrontFace),
     PROC(glFrustum),
+    PROC(glGenBuffers), /* OpenGL 1.5 */
     PROC(glGenLists),
+    //PROC(glGenQueries), /* OpenGL 1.5 */
     PROC(glGenTextures),
     //PROC(glGetBooleanv),
+    PROC(glGetBufferParameteriv), /* OpenGL 1.5 */
+    PROC(glGetBufferPointerv), /* OpenGL 1.5 */
+    PROC(glGetBufferSubData), /* OpenGL 1.5 */
     //PROC(glGetClipPlane),
     PROC(glGetDoublev),
     PROC(glGetError),
@@ -160,6 +173,9 @@ static const ProcMap s_proc_map[] = {
     PROC(glGetPixelMapusv),
     //PROC(glGetPointerv),
     //PROC(glGetPolygonStipple),
+    //PROC(glGetQueryObjectiv), /* OpenGL 1.5 */
+    //PROC(glGetQueryObjectuiv), /* OpenGL 1.5 */
+    //PROC(glGetQueryiv), /* OpenGL 1.5 */
     PROC(glGetString),
     //PROC(glGetTexEnvfv),
     //PROC(glGetTexEnviv),
@@ -186,8 +202,10 @@ static const ProcMap s_proc_map[] = {
     //PROC(glIndexubv),
     PROC(glInitNames),
     PROC(glInterleavedArrays),
+    PROC(glIsBuffer), /* OpenGL 1.5 */
     PROC(glIsEnabled),
     PROC(glIsList),
+    //PROC(glIsQuery), /* OpenGL 1.5 */
     //PROC(glIsTexture),
     PROC(glLightModelf),
     PROC(glLightModelfv),
@@ -209,6 +227,7 @@ static const ProcMap s_proc_map[] = {
     //PROC(glMap1f),
     //PROC(glMap2d),
     //PROC(glMap2f),
+    PROC(glMapBuffer), /* OpenGL 1.5 */
     //PROC(glMapGrid1d),
     //PROC(glMapGrid1f),
     //PROC(glMapGrid2d),
@@ -353,6 +372,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glTexSubImage2D),
     PROC(glTranslated),
     PROC(glTranslatef),
+    PROC(glUnmapBuffer), /* OpenGL 1.5 */
     PROC(glVertex2d),
     PROC(glVertex2dv),
     PROC(glVertex2f),
