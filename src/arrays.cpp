@@ -32,6 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "debug.h"
 #include "state.h"
+#include "vbo.h"
 
 #include <limits>
 #include <ogc/gx.h>
@@ -106,10 +107,12 @@ static TemplateSelectionInfo select_template(GLenum type,
 }
 
 struct VertexReaderBase {
-    VertexReaderBase(GxVertexFormat format, const void *data, int stride):
+    VertexReaderBase(GxVertexFormat format, VboType vbo, const void *data,
+                     int stride):
         format(format),
-        data(static_cast<const char *>(data)),
-        stride(stride), dup_color(false) {}
+        data(static_cast<const char *>(vbo ?
+                                       _ogx_vbo_get_data(vbo, data) : data)),
+        stride(stride), dup_color(false), vbo(vbo) {}
 
     void setup_draw() {
         GX_SetVtxDesc(format.attribute, GX_DIRECT);
@@ -137,12 +140,14 @@ struct VertexReaderBase {
     const char *data;
     uint16_t stride;
     bool dup_color;
+    VboType vbo;
 };
 
 template <typename T>
 struct GenericVertexReader: public VertexReaderBase {
-    GenericVertexReader(GxVertexFormat format, const void *data, int stride):
-        VertexReaderBase(format, data,
+    GenericVertexReader(GxVertexFormat format, VboType vbo, const void *data,
+                        int stride):
+        VertexReaderBase(format, vbo, data,
                          stride > 0 ? stride : sizeof(T) * format.num_components)
     {
     }
@@ -289,25 +294,28 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
 {
     TemplateSelectionInfo info =
         select_template(type, vertex_attribute, num_components);
+
+    VboType vbo = glparamstate.bound_vbo_array;
+
     if (info.same_type) {
         /* No conversions needed, just dump the data from the array directly
          * into the GX pipe. */
         switch (type) {
         case GL_UNSIGNED_BYTE:
             new (reader) SameTypeVertexReader<int8_t>(
-                info.format, data, stride);
+                info.format, vbo, data, stride);
             return;
         case GL_SHORT:
             new (reader) SameTypeVertexReader<int16_t>(
-                info.format, data, stride);
+                info.format, vbo, data, stride);
             return;
         case GL_INT:
             new (reader) SameTypeVertexReader<int32_t>(
-                info.format, data, stride);
+                info.format, vbo, data, stride);
             return;
         case GL_FLOAT:
             new (reader) SameTypeVertexReader<float>(
-                info.format, data, stride);
+                info.format, vbo, data, stride);
             return;
         }
     }
@@ -316,19 +324,19 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
         switch (type) {
         /* The case GL_UNSIGNED_BYTE is handled by the SameTypeVertexReader */
         case GL_BYTE:
-            new (reader) ColorVertexReader<char>(info.format, data, stride);
+            new (reader) ColorVertexReader<char>(info.format, vbo, data, stride);
             return;
         case GL_SHORT:
-            new (reader) ColorVertexReader<int16_t>(info.format, data, stride);
+            new (reader) ColorVertexReader<int16_t>(info.format, vbo, data, stride);
             return;
         case GL_INT:
-            new (reader) ColorVertexReader<int32_t>(info.format, data, stride);
+            new (reader) ColorVertexReader<int32_t>(info.format, vbo, data, stride);
             return;
         case GL_FLOAT:
-            new (reader) ColorVertexReader<float>(info.format, data, stride);
+            new (reader) ColorVertexReader<float>(info.format, vbo, data, stride);
             return;
         case GL_DOUBLE:
-            new (reader) ColorVertexReader<double>(info.format, data, stride);
+            new (reader) ColorVertexReader<double>(info.format, vbo, data, stride);
             return;
         }
     }
@@ -340,19 +348,19 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
      * GX_TexCoord2f32()). */
     switch (type) {
     case GL_BYTE:
-        new (reader) CoordVertexReader<char>(info.format, data, stride);
+        new (reader) CoordVertexReader<char>(info.format, vbo, data, stride);
         return;
     case GL_SHORT:
-        new (reader) CoordVertexReader<int16_t>(info.format, data, stride);
+        new (reader) CoordVertexReader<int16_t>(info.format, vbo, data, stride);
         return;
     case GL_INT:
-        new (reader) CoordVertexReader<int32_t>(info.format, data, stride);
+        new (reader) CoordVertexReader<int32_t>(info.format, vbo, data, stride);
         return;
     case GL_FLOAT:
-        new (reader) CoordVertexReader<float>(info.format, data, stride);
+        new (reader) CoordVertexReader<float>(info.format, vbo, data, stride);
         return;
     case GL_DOUBLE:
-        new (reader) CoordVertexReader<double>(info.format, data, stride);
+        new (reader) CoordVertexReader<double>(info.format, vbo, data, stride);
         return;
     }
 

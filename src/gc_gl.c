@@ -55,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "state.h"
 #include "stencil.h"
 #include "utils.h"
+#include "vbo.h"
 
 #include <GL/gl.h>
 #include <gctypes.h>
@@ -2308,6 +2309,11 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
 
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
+
+    if (glparamstate.bound_vbo_element_array) {
+        indices = _ogx_vbo_get_data(glparamstate.bound_vbo_element_array,
+                                    indices);
+    }
 
     bool loop = gxmode.loop;
     GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
