@@ -61,6 +61,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <gctypes.h>
 #include <malloc.h>
 #include <math.h>
+#include <ogc/machine/processor.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -2389,6 +2390,9 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
     HANDLE_CALL_LIST(DRAW_ARRAYS, mode, first, count);
 
+    /* If VBOs are in use, make sure their data has been updated */
+    ppcsync();
+
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;
     if (glparamstate.stencil.enabled) {
@@ -2428,6 +2432,9 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
         return;
 
     HANDLE_CALL_LIST(DRAW_ELEMENTS, mode, count, type, indices);
+
+    /* If VBOs are in use, make sure their data has been updated */
+    ppcsync();
 
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;

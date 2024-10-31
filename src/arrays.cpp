@@ -47,6 +47,25 @@ struct GxVertexFormat {
     char num_components;
     uint8_t type;
     uint8_t size;
+
+    int stride() const {
+        int component_size;
+        if (attribute == GX_VA_CLR0 || attribute == GX_VA_CLR1) {
+            component_size = 1;
+        } else {
+            switch (size) {
+            case GX_S8:
+            case GX_U8:
+                component_size = 1; break;
+            case GX_S16:
+            case GX_U16:
+                component_size = 2; break;
+            case GX_F32:
+                component_size = 4; break;
+            }
+        }
+        return component_size * num_components;
+    }
 };
 
 struct TemplateSelectionInfo {
@@ -114,7 +133,7 @@ struct VertexReaderBase {
                                        _ogx_vbo_get_data(vbo, data) : data)),
         stride(stride), dup_color(false), vbo(vbo) {}
 
-    void setup_draw() {
+    virtual void setup_draw() {
         GX_SetVtxDesc(format.attribute, GX_DIRECT);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
                          format.type, format.size, 0);
@@ -141,6 +160,36 @@ struct VertexReaderBase {
     uint16_t stride;
     bool dup_color;
     VboType vbo;
+};
+
+struct DirectVboReader: public VertexReaderBase {
+    DirectVboReader(GxVertexFormat format,
+                    VboType vbo, const void *data, int stride):
+        VertexReaderBase(format, vbo, data, stride ? stride : format.stride())
+    {
+    }
+
+    void setup_draw() override {
+        GX_SetArray(format.attribute, const_cast<char*>(data), stride);
+        GX_SetVtxDesc(format.attribute, GX_INDEX16);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
+                         format.type, format.size, 0);
+        if (dup_color) {
+            GX_SetVtxDesc(format.attribute + 1, GX_INDEX16);
+            GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute + 1,
+                             format.type, format.size, 0);
+        }
+    }
+
+    void process_element(int index) {
+        GX_Position1x16(index);
+    }
+    /* These should never be called on this class, since it doesn't make sense
+     * to call glArrayElement() when a VBO is bound. */
+    void read_color(int index, GXColor *color) override {}
+    void read_pos3f(int index, Pos3f pos) override {}
+    void read_norm3f(int index, Norm3f norm) override {}
+    void read_tex2f(int index, Tex2f tex) override {}
 };
 
 template <typename T>
@@ -300,6 +349,10 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
     if (info.same_type) {
         /* No conversions needed, just dump the data from the array directly
          * into the GX pipe. */
+        if (vbo) {
+            new (reader) DirectVboReader(info.format, vbo, data, stride);
+            return;
+        }
         switch (type) {
         case GL_UNSIGNED_BYTE:
             new (reader) SameTypeVertexReader<int8_t>(
