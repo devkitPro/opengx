@@ -57,7 +57,7 @@ const GLubyte *glGetString(GLenum name)
     case GL_VERSION:
         return "1.1";
     case GL_EXTENSIONS:
-        return gl_null_string;
+        return "GL_ARB_vertex_buffer_object ";
     default:
         set_error(GL_INVALID_ENUM);
         return gl_null_string;
