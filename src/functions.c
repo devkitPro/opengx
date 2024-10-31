@@ -411,6 +411,17 @@ static int compare_proc(const void *a_ptr, const void *b_ptr)
 
 void *ogx_get_proc_address(const char *proc)
 {
+    char buffer[64];
+    size_t len;
+
+    /* If the string ends with the "ARB" suffix, remove it */
+    len = strlen(proc);
+    if (len > 3 && strcmp(proc + len - 3, "ARB") == 0) {
+        strncpy(buffer, proc, len - 3);
+        buffer[len - 3] = '\0';
+        proc = buffer;
+    }
+
     ProcMap search = { proc, NULL };
     ProcMap *elem = bsearch(&search, s_proc_map, NUM_PROCS, sizeof(ProcMap),
                             compare_proc);
