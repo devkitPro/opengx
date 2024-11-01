@@ -97,6 +97,13 @@ static TemplateSelectionInfo select_template(GLenum type,
         info.same_type = num_components == 3;
         break;
     case GX_VA_TEX0:
+    case GX_VA_TEX1:
+    case GX_VA_TEX2:
+    case GX_VA_TEX3:
+    case GX_VA_TEX4:
+    case GX_VA_TEX5:
+    case GX_VA_TEX6:
+    case GX_VA_TEX7:
         info.format.type = num_components == 1 ? GX_TEX_S : GX_TEX_ST;
         info.format.size = gl_type_to_gx_size(type);
         info.same_type = num_components <= 2;
@@ -130,6 +137,9 @@ struct VertexReaderBase {
         stride(stride), dup_color(false), vbo(vbo) {}
 
     virtual void setup_draw() {
+        /* TODO: The texture coordinates must be enabled sequentially, so we
+         * should adjust format.attribute and to count how many texture units
+         * have been enabled before the current one. */
         GX_SetVtxDesc(format.attribute, GX_DIRECT);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
                          format.type, format.size, 0);

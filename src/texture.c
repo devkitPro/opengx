@@ -484,3 +484,23 @@ void glGenTextures(GLsizei n, GLuint *textures)
         set_error(GL_OUT_OF_MEMORY);
     }
 }
+
+void glActiveTexture(GLenum texture)
+{
+    int index = texture - GL_TEXTURE0;
+    if (index < 0 || index >= MAX_TEXTURE_UNITS) {
+        set_error(GL_INVALID_ENUM);
+        return;
+    }
+    glparamstate.active_texture = index;
+}
+
+void glClientActiveTexture(GLenum texture)
+{
+    int index = texture - GL_TEXTURE0;
+    if (index < 0 || index >= MAX_TEXTURE_UNITS) {
+        set_error(GL_INVALID_ENUM);
+        return;
+    }
+    glparamstate.cs.active_texture = index;
+}

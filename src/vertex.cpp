@@ -79,19 +79,34 @@ void set_current_color(T red, T green, T blue, T alpha = full_color<T>())
     floatcpy(glparamstate.imm_mode.current_color, c, 4);
 }
 
-static inline void set_current_tex_coords(float s, float t = 0)
+static inline void set_current_tex_unit_coords(int unit, float s, float t = 0)
 {
-    auto &c = glparamstate.imm_mode.current_texcoord;
+    auto &c = glparamstate.imm_mode.current_texcoord[unit];
     c[0] = s;
     c[1] = t;
+
+    if (glparamstate.imm_mode.in_gl_begin) {
+        glparamstate.imm_mode.has_texcoord |= (1 << unit);
+    }
+}
+
+static void set_current_tex_unit_coords(int unit, float s, float t,
+                                        float r, float q = 1.0f)
+{
+    set_current_tex_unit_coords(unit, s, t);
+    if (r != 0.0f || q != 1.0f) {
+        warning("glTexCoord{3,4}* not supported");
+    }
+}
+
+static inline void set_current_tex_coords(float s, float t = 0)
+{
+    set_current_tex_unit_coords(0, s, t);
 }
 
 static inline void set_current_tex_coords(float s, float t, float r, float q = 1.0f)
 {
-    set_current_tex_coords(s, t);
-    if (r != 0.0f || q != 1.0f) {
-        warning("glTexCoord{3,4}* not supported");
-    }
+    set_current_tex_unit_coords(0, s, t, r, q);
 }
 
 void glVertex2d(GLdouble x, GLdouble y)
@@ -137,8 +152,12 @@ void glVertex3f(GLfloat x, GLfloat y, GLfloat z)
     }
 
     VertexData *vert = &glparamstate.imm_mode.current_vertices[glparamstate.imm_mode.current_numverts++];
-    vert->tex[0] = glparamstate.imm_mode.current_texcoord[0];
-    vert->tex[1] = glparamstate.imm_mode.current_texcoord[1];
+    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+        if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
+            vert->tex[i][0] = glparamstate.imm_mode.current_texcoord[i][0];
+            vert->tex[i][1] = glparamstate.imm_mode.current_texcoord[i][1];
+        }
+    }
 
     vert->color = gxcol_new_fv(glparamstate.imm_mode.current_color);
 
@@ -447,6 +466,92 @@ void glTexCoord4dv(const GLdouble *v) { set_current_tex_coords(v[0], v[1], v[2],
 void glTexCoord4fv(const GLfloat *v) { set_current_tex_coords(v[0], v[1], v[2], v[3]); }
 void glTexCoord4iv(const GLint *v) { set_current_tex_coords(v[0], v[1], v[2], v[3]); }
 void glTexCoord4sv(const GLshort *v) { set_current_tex_coords(v[0], v[1], v[2], v[3]); }
+
+#define sctuc(target, ...) \
+    set_current_tex_unit_coords(target - GL_TEXTURE0, __VA_ARGS__)
+void glMultiTexCoord1d(GLenum unit, GLdouble s) { sctuc(unit, s); }
+void glMultiTexCoord1f(GLenum unit, GLfloat s) { sctuc(unit, s); }
+void glMultiTexCoord1i(GLenum unit, GLint s) { sctuc(unit, s); }
+void glMultiTexCoord1s(GLenum unit, GLshort s) { sctuc(unit, s); }
+
+void glMultiTexCoord2d(GLenum unit, GLdouble s, GLdouble t) {
+    sctuc(unit, s, t);
+}
+
+void glMultiTexCoord2f(GLenum unit, GLfloat s, GLfloat t) {
+    sctuc(unit, s, t);
+}
+
+void glMultiTexCoord2i(GLenum unit, GLint s, GLint t) {
+    sctuc(unit, s, t);
+}
+
+void glMultiTexCoord2s(GLenum unit, GLshort s, GLshort t) {
+    sctuc(unit, s, t);
+}
+
+void glMultiTexCoord3d(GLenum unit, GLdouble s, GLdouble t, GLdouble r) {
+    sctuc(unit, s, t, r);
+}
+
+void glMultiTexCoord3f(GLenum unit, GLfloat s, GLfloat t, GLfloat r) {
+    sctuc(unit, s, t, r);
+}
+
+void glMultiTexCoord3i(GLenum unit, GLint s, GLint t, GLint r) {
+    sctuc(unit, s, t, r);
+}
+
+void glMultiTexCoord3s(GLenum unit, GLshort s, GLshort t, GLshort r) {
+    sctuc(unit, s, t, r);
+}
+
+void glMultiTexCoord4d(GLenum unit, GLdouble s, GLdouble t, GLdouble r, GLdouble q) {
+    sctuc(unit, s, t, r, q);
+}
+
+void glMultiTexCoord4f(GLenum unit, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+    sctuc(unit, s, t, r, q);
+}
+
+void glMultiTexCoord4i(GLenum unit, GLint s, GLint t, GLint r, GLint q) {
+    sctuc(unit, s, t, r, q);
+}
+
+void glMultiTexCoord4s(GLenum unit, GLshort s, GLshort t, GLshort r, GLshort q) {
+    sctuc(unit, s, t, r, q);
+}
+
+void glMultiTexCoord1dv(GLenum unit, const GLdouble *v) { sctuc(unit, v[0]); }
+void glMultiTexCoord1fv(GLenum unit, const GLfloat *v) { sctuc(unit, v[0]); }
+void glMultiTexCoord1iv(GLenum unit, const GLint *v) { sctuc(unit, v[0]); }
+void glMultiTexCoord1sv(GLenum unit, const GLshort *v) { sctuc(unit, v[0]); }
+
+void glMultiTexCoord2dv(GLenum unit, const GLdouble *v) { sctuc(unit, v[0], v[1]); }
+void glMultiTexCoord2fv(GLenum unit, const GLfloat *v) { sctuc(unit, v[0], v[1]); }
+void glMultiTexCoord2iv(GLenum unit, const GLint *v) { sctuc(unit, v[0], v[1]); }
+void glMultiTexCoord2sv(GLenum unit, const GLshort *v) { sctuc(unit, v[0], v[1]); }
+
+void glMultiTexCoord3dv(GLenum unit, const GLdouble *v) { sctuc(unit, v[0], v[1], v[2]); }
+void glMultiTexCoord3fv(GLenum unit, const GLfloat *v) { sctuc(unit, v[0], v[1], v[2]); }
+void glMultiTexCoord3iv(GLenum unit, const GLint *v) { sctuc(unit, v[0], v[1], v[2]); }
+void glMultiTexCoord3sv(GLenum unit, const GLshort *v) { sctuc(unit, v[0], v[1], v[2]); }
+
+void glMultiTexCoord4dv(GLenum unit, const GLdouble *v) {
+    sctuc(unit, v[0], v[1], v[2], v[3]);
+}
+
+void glMultiTexCoord4fv(GLenum unit, const GLfloat *v) {
+    sctuc(unit, v[0], v[1], v[2], v[3]);
+}
+
+void glMultiTexCoord4iv(GLenum unit, const GLint *v) {
+    sctuc(unit, v[0], v[1], v[2], v[3]);
+}
+
+void glMultiTexCoord4sv(GLenum unit, const GLshort *v) {
+    sctuc(unit, v[0], v[1], v[2], v[3]);
+}
 
 void glRectd(GLdouble x1, GLdouble y1, GLdouble x2, GLdouble y2)
 {

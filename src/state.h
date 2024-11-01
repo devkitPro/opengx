@@ -57,11 +57,15 @@ extern "C" {
  * needed */
 #define MAX_CLIP_PLANES 6
 #define MAX_PIXEL_MAP_TABLE 32 /* 32 is the minimum required */
+/* GX supports up to 8 texture units (that is, TEV stages with textures), but
+ * applications typically use much less. Also, one textured stage is used by
+ * opengx when stencil is enabled. */
+#define MAX_TEXTURE_UNITS 4
 
 typedef struct {
     Pos3f pos;
     Norm3f norm;
-    Tex2f tex;
+    Tex2f tex[MAX_TEXTURE_UNITS];
     GXColor color;
 } VertexData;
 
@@ -116,6 +120,7 @@ typedef struct glparams_
     bool color_update;
     bool polygon_offset_fill;
     bool raster_pos_valid;
+    char active_texture;
     uint8_t alpha_func, alpha_ref, alphatest_enabled;
     uint8_t clip_plane_mask;
     uint16_t texture_env_mode;
@@ -149,17 +154,19 @@ typedef struct glparams_
     uint16_t hit_count;
 
     void *index_array;
-    OgxArrayReader vertex_array, texcoord_array, normal_array, color_array;
+    OgxArrayReader vertex_array, normal_array, color_array;
+    OgxArrayReader texcoord_array[MAX_TEXTURE_UNITS];
     struct client_state
     {
         unsigned vertex_enabled : 1;
         unsigned normal_enabled : 1;
-        unsigned texcoord_enabled : 1;
         unsigned index_enabled : 1;
         unsigned color_enabled : 1;
+        unsigned texcoord_enabled : MAX_TEXTURE_UNITS;
+        char active_texture;
     } cs;
 
-    char texture_enabled;
+    unsigned texture_enabled : MAX_TEXTURE_UNITS;
     unsigned pack_swap_bytes: 1;
     unsigned pack_lsb_first: 1;
     unsigned unpack_swap_bytes: 1;
@@ -183,7 +190,7 @@ typedef struct glparams_
     struct imm_mode
     {
         float current_color[4];
-        Tex2f current_texcoord;
+        Tex2f current_texcoord[MAX_TEXTURE_UNITS];
         Norm3f current_normal;
         int current_numverts;
         int current_vertices_size;
@@ -192,6 +199,7 @@ typedef struct glparams_
         unsigned in_gl_begin : 1;
         unsigned has_color : 1;
         unsigned has_normal : 1;
+        unsigned has_texcoord : MAX_TEXTURE_UNITS;
     } imm_mode;
 
     union dirty_union

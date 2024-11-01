@@ -241,6 +241,7 @@ void ogx_initialize()
     glparamstate.texture_eye_plane_t[1] = 1.0f;
     glparamstate.texture_object_plane_s[0] = 1.0f;
     glparamstate.texture_object_plane_t[1] = 1.0f;
+    glparamstate.active_texture = 0;
 
     glparamstate.cur_proj_mat = -1;
     glparamstate.cur_modv_mat = -1;
@@ -258,8 +259,8 @@ void ogx_initialize()
     glparamstate.imm_mode.current_color[1] = 1.0f;
     glparamstate.imm_mode.current_color[2] = 1.0f;
     glparamstate.imm_mode.current_color[3] = 1.0f;
-    glparamstate.imm_mode.current_texcoord[0] = 0;
-    glparamstate.imm_mode.current_texcoord[1] = 0;
+    memset(glparamstate.imm_mode.current_texcoord, 0,
+           sizeof(glparamstate.imm_mode.current_texcoord));
     glparamstate.imm_mode.current_normal[0] = 0;
     glparamstate.imm_mode.current_normal[1] = 0;
     glparamstate.imm_mode.current_normal[2] = 1.0f;
@@ -514,7 +515,7 @@ void glEnable(GLenum cap)
 
     switch (cap) {
     case GL_TEXTURE_2D:
-        glparamstate.texture_enabled = 1;
+        glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
         break;
     case GL_TEXTURE_GEN_S:
         glparamstate.texture_gen_enabled |= OGX_TEXGEN_S;
@@ -591,7 +592,7 @@ void glDisable(GLenum cap)
 
     switch (cap) {
     case GL_TEXTURE_2D:
-        glparamstate.texture_enabled = 0;
+        glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
         break;
     case GL_TEXTURE_GEN_S:
         glparamstate.texture_gen_enabled &= ~OGX_TEXGEN_S;
@@ -907,6 +908,7 @@ void glBegin(GLenum mode)
     glparamstate.imm_mode.in_gl_begin = 1;
     glparamstate.imm_mode.has_color = 0;
     glparamstate.imm_mode.has_normal = 0;
+    glparamstate.imm_mode.has_texcoord = 0;
     if (!glparamstate.imm_mode.current_vertices) {
         int count = 64;
         warning("First malloc %d", errno);
@@ -926,8 +928,13 @@ void glEnd()
     struct client_state cs_backup = glparamstate.cs;
     VertexData *base = glparamstate.imm_mode.current_vertices;
     int stride = sizeof(VertexData);
-    _ogx_array_reader_init(&glparamstate.texcoord_array, GX_VA_TEX0,
-                           base->tex, 2, GL_FLOAT, stride);
+    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+        if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
+            _ogx_array_reader_init(&glparamstate.texcoord_array[i],
+                                   GX_VA_TEX0 + i,
+                                   base->tex[i], 2, GL_FLOAT, stride);
+        }
+    }
 
     _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
                            &base->color, 4, GL_UNSIGNED_BYTE, stride);
@@ -937,7 +944,7 @@ void glEnd()
 
     _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS,
                            base->pos, 3, GL_FLOAT, stride);
-    glparamstate.cs.texcoord_enabled = 1;
+    glparamstate.cs.texcoord_enabled = glparamstate.imm_mode.has_texcoord;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
     glparamstate.cs.normal_enabled = glparamstate.imm_mode.has_normal;
     glparamstate.cs.vertex_enabled = 1;
@@ -1533,7 +1540,9 @@ void glColorPointer(GLint size, GLenum type,
 
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.texcoord_array, GX_VA_TEX0, pointer,
+    int unit = glparamstate.cs.active_texture;
+    _ogx_array_reader_init(&glparamstate.texcoord_array[unit],
+                           GX_VA_TEX0 + unit, pointer,
                            size, type, stride);
 }
 
@@ -1633,7 +1642,7 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
                            vertex_array, 0, GL_FLOAT, stride);
     _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM,
                            normal_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.texcoord_array, GX_VA_TEX0,
+    _ogx_array_reader_init(&glparamstate.texcoord_array[0], GX_VA_TEX0,
                            texcoord_array, 0, GL_FLOAT, stride);
     _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
                            color_array, 0, GL_FLOAT, stride);
@@ -2305,8 +2314,11 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
     if (color_provide)
         _ogx_array_reader_setup_draw_color(&glparamstate.color_array,
                                            color_provide == 2);
-    if (texen)
-        _ogx_array_reader_setup_draw(&glparamstate.texcoord_array);
+    for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+        if (texen & (1 << tex)) {
+            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[tex]);
+        }
+    }
 
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
@@ -2330,8 +2342,11 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
             _ogx_array_reader_process_element(&glparamstate.color_array, index);
         }
 
-        if (texen) {
-            _ogx_array_reader_process_element(&glparamstate.texcoord_array, index);
+        for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+            if (texen & (1 << tex)) {
+                _ogx_array_reader_process_element(
+                    &glparamstate.texcoord_array[tex], index);
+            }
         }
     }
     GX_End();
@@ -2370,9 +2385,12 @@ void glArrayElement(GLint i)
         glNormal3fv(value);
     }
 
-    if (glparamstate.cs.texcoord_enabled) {
-        _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array, i, value);
-        glTexCoord2fv(value);
+    for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+        if (glparamstate.cs.texcoord_enabled & (1 << tex)) {
+            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array[tex],
+                                         i, value);
+            glMultiTexCoord2fv(GL_TEXTURE0 + tex, value);
+        }
     }
 
     if (glparamstate.cs.color_enabled) {
@@ -2407,7 +2425,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     /* When not building a display list, we can optimize the drawing by
      * avoiding passing texture coordinates if texturing is not enabled.
      */
-    texen = texen && glparamstate.texture_enabled;
+    texen = texen & glparamstate.texture_enabled;
 
     if (should_draw) {
         int color_provide = 0;
@@ -2449,7 +2467,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     /* When not building a display list, we can optimize the drawing by
      * avoiding passing texture coordinates if texturing is not enabled.
      */
-    texen = texen && glparamstate.texture_enabled;
+    texen = texen & glparamstate.texture_enabled;
 
     if (should_draw) {
         int color_provide = 0;
@@ -2478,8 +2496,11 @@ static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
     if (color_provide)
         _ogx_array_reader_setup_draw_color(&glparamstate.color_array,
                                            color_provide == 2);
-    if (texen)
-        _ogx_array_reader_setup_draw(&glparamstate.texcoord_array);
+    for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+        if (texen & (1 << tex)) {
+            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[tex]);
+        }
+    }
 
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
@@ -2499,8 +2520,11 @@ static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
             _ogx_array_reader_process_element(&glparamstate.color_array, j);
         }
 
-        if (texen) {
-            _ogx_array_reader_process_element(&glparamstate.texcoord_array, j);
+        for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+            if (texen & (1 << tex)) {
+                _ogx_array_reader_process_element(
+                    &glparamstate.texcoord_array[tex], j);
+            }
         }
     }
     GX_End();

@@ -250,10 +250,12 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         DCStoreRange(&s_current_color, 4);
     }
 
-    /* It makes no sense to use a fixed texture coordinates for all vertices,
-     * so we won't add them unless they are enabled. */
-    if (dg->cs.texcoord_enabled) {
-        _ogx_array_reader_setup_draw(&glparamstate.texcoord_array);
+    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+        /* It makes no sense to use a fixed texture coordinates for all vertices,
+         * so we won't add them unless they are enabled. */
+        if (dg->cs.texcoord_enabled & (1 << i)) {
+            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[i]);
+        }
     }
 
     GX_InvVtxCache();
@@ -445,8 +447,11 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
             GX_Color1x8(0); // CLR1
         }
 
-        if (dg->cs.texcoord_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.texcoord_array, index);
+        for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
+            if (dg->cs.texcoord_enabled & (1 << tex)) {
+                _ogx_array_reader_process_element(
+                    &glparamstate.texcoord_array[tex], index);
+            }
         }
     }
     GX_End();

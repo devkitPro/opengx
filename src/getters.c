@@ -89,7 +89,7 @@ GLboolean glIsEnabled(GLenum cap)
     case GL_STENCIL_TEST:
         return glparamstate.stencil.enabled;
     case GL_TEXTURE_2D:
-        return glparamstate.texture_enabled;
+        return glparamstate.texture_enabled & (1 << glparamstate.active_texture);
     case GL_TEXTURE_GEN_S:
         return glparamstate.texture_gen_enabled & OGX_TEXGEN_S;
     case GL_TEXTURE_GEN_T:
@@ -160,8 +160,14 @@ void glGetFloatv(GLenum pname, GLfloat *params)
 void glGetIntegerv(GLenum pname, GLint *params)
 {
     switch (pname) {
+    case GL_ACTIVE_TEXTURE:
+        *params = GL_TEXTURE0 + glparamstate.active_texture;
+        break;
     case GL_ARRAY_BUFFER_BINDING:
         *params = glparamstate.bound_vbo_array;
+        break;
+    case GL_CLIENT_ACTIVE_TEXTURE:
+        *params = GL_TEXTURE0 + glparamstate.cs.active_texture;
         break;
     case GL_ELEMENT_ARRAY_BUFFER_BINDING:
         *params = glparamstate.bound_vbo_element_array;
@@ -194,6 +200,10 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_MAX_CLIP_PLANES:
         *params = MAX_CLIP_PLANES;
         return;
+    case GL_MAX_TEXTURE_COORDS:
+    case GL_MAX_TEXTURE_IMAGE_UNITS:
+        *params = MAX_TEXTURE_UNITS;
+        break;
     case GL_MAX_TEXTURE_SIZE:
         *params = 1024;
         return;
