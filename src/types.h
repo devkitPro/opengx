@@ -44,6 +44,10 @@ extern "C" {
  * to use a larger type for the index. */
 typedef uint8_t VboType;
 
+typedef float Pos3f[3];
+typedef float Norm3f[3];
+typedef float Tex2f[2];
+
 #ifdef __cplusplus
 } // extern C
 #endif

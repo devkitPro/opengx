@@ -59,9 +59,9 @@ extern "C" {
 #define MAX_PIXEL_MAP_TABLE 32 /* 32 is the minimum required */
 
 typedef struct {
-    float pos[3];
-    float norm[3];
-    float tex[2];
+    Pos3f pos;
+    Norm3f norm;
+    Tex2f tex;
     GXColor color;
 } VertexData;
 
@@ -183,8 +183,8 @@ typedef struct glparams_
     struct imm_mode
     {
         float current_color[4];
-        float current_texcoord[2];
-        float current_normal[3];
+        Tex2f current_texcoord;
+        Norm3f current_normal;
         int current_numverts;
         int current_vertices_size;
         VertexData *current_vertices;

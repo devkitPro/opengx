@@ -38,10 +38,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <ogc/gx.h>
 #include <variant>
 
-typedef float Pos3f[3];
-typedef float Norm3f[3];
-typedef float Tex2f[2];
-
 struct GxVertexFormat {
     uint8_t attribute;
     char num_components;
