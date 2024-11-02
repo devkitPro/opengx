@@ -2167,11 +2167,11 @@ bool _ogx_setup_render_stages()
         unsigned char rasterized_color = GX_COLOR0A0;
         if (!glparamstate.cs.color_enabled) { // No need for vertex color raster, it's constant
             // Use constant color
-            vertex_color_register = GX_CC_C0;
-            vertex_alpha_register = GX_CA_A0;
+            vertex_color_register = GX_CC_CPREV;
+            vertex_alpha_register = GX_CA_APREV;
             // Load the color (current GL color)
             GXColor ccol = gxcol_new_fv(glparamstate.imm_mode.current_color);
-            GX_SetTevColor(GX_TEVREG0, ccol);
+            GX_SetTevColor(GX_TEVPREV, ccol);
 
             rasterized_color = GX_COLORNULL; // Disable vertex color rasterizer
         }
