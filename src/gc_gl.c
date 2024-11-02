@@ -2158,47 +2158,41 @@ bool _ogx_setup_render_stages()
     } else {
         // Unlit scene
         // TEV STAGE 0: Modulate the vertex color with the texture 0. Outputs to GX_TEVPREV
-        // Optimization: If color_enabled is false (constant vertex color) use the constant color register
-        // instead of using the rasterizer and emitting a color for each vertex
-
-        // By default use rasterized data and put it a COLOR0A0
-        unsigned char vertex_color_register = GX_CC_RASC;
-        unsigned char vertex_alpha_register = GX_CA_RASA;
-        unsigned char rasterized_color = GX_COLOR0A0;
-        if (!glparamstate.cs.color_enabled) { // No need for vertex color raster, it's constant
-            // Use constant color
-            vertex_color_register = GX_CC_CPREV;
-            vertex_alpha_register = GX_CA_APREV;
-            // Load the color (current GL color)
+        /* Optimization: If color_enabled is false (constant vertex color) use
+         * the material color register instead of emitting a color for each
+         * vertex */
+        uint8_t material_source;
+        if (glparamstate.cs.color_enabled) {
+            material_source = GX_SRC_VTX;
+        } else {
+            // Load the constant color (current GL color)
             GXColor ccol = gxcol_new_fv(glparamstate.imm_mode.current_color);
-            GX_SetTevColor(GX_TEVPREV, ccol);
-
-            rasterized_color = GX_COLORNULL; // Disable vertex color rasterizer
+            GX_SetChanMatColor(GX_COLOR0A0, ccol);
+            material_source = GX_SRC_REG;
         }
 
         stages = 1;
         GX_SetNumChans(1);
 
         // Disable lighting and output vertex color to the rasterized color
-        GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX, 0, 0, 0);
-        GX_SetChanCtrl(GX_COLOR1A1, GX_DISABLE, GX_SRC_REG, GX_SRC_REG, 0, 0, 0);
+        GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_REG, material_source, 0, 0, 0);
 
         if (glparamstate.texture_enabled) {
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
             setup_texture_stage(GX_TEVSTAGE0,
-                                vertex_color_register, vertex_alpha_register,
-                                rasterized_color, &tex_mtxs);
+                                GX_CC_RASC, GX_CA_RASA,
+                                GX_COLOR0A0, &tex_mtxs);
             tex_coords++;
             tex_maps++;
         } else {
             // In data: d: Raster Color
-            GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, vertex_color_register);
-            GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, vertex_alpha_register);
+            GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
+            GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
             // Operation: Pass the color
             GX_SetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
             GX_SetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, rasterized_color);
+            GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, GX_COLOR0A0);
         }
     }
 
