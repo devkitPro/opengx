@@ -72,6 +72,12 @@ typedef struct {
     UserData ud;
 } TextureInfo;
 
+static inline int curr_tex()
+{
+    int unit = glparamstate.active_texture;
+    return glparamstate.texture_env[unit].glcurtex;
+}
+
 static uint32_t calc_memory(int w, int h, uint32_t format)
 {
     return GX_GetTexBufferSize(w, h, format, GX_FALSE, 0);
@@ -157,7 +163,7 @@ void glTexParameteri(GLenum target, GLenum pname, GLint param)
     if (target != GL_TEXTURE_2D)
         return;
 
-    gltexture_ *currtex = &texture_list[glparamstate.glcurtex];
+    gltexture_ *currtex = &texture_list[curr_tex()];
     u8 wraps, wrapt, min_filter, mag_filter;
 
     switch (pname) {
@@ -244,9 +250,69 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
 {
     HANDLE_CALL_LIST(TEX_ENV, target, pname, param);
 
+    int unit = glparamstate.active_texture;
+    OgxTexEnvironment *te = &glparamstate.texture_env[unit];
     switch (pname) {
+    case GL_COMBINE_ALPHA:
+        te->combine_alpha = param;
+        break;
+    case GL_COMBINE_RGB:
+        te->combine_rgb = param;
+        break;
+    case GL_OPERAND0_ALPHA:
+    case GL_OPERAND1_ALPHA:
+    case GL_OPERAND2_ALPHA:
+        te->operand_alpha[pname - GL_OPERAND0_ALPHA] = param;
+        break;
+    case GL_SOURCE0_ALPHA:
+    case GL_SOURCE1_ALPHA:
+    case GL_SOURCE2_ALPHA:
+        te->source_alpha[pname - GL_SOURCE0_ALPHA] = param;
+        break;
+    case GL_OPERAND0_RGB:
+    case GL_OPERAND1_RGB:
+    case GL_OPERAND2_RGB:
+        te->operand_rgb[pname - GL_OPERAND0_RGB] = param;
+        break;
+    case GL_SOURCE0_RGB:
+    case GL_SOURCE1_RGB:
+    case GL_SOURCE2_RGB:
+        te->source_rgb[pname - GL_SOURCE0_RGB] = param;
+        break;
     case GL_TEXTURE_ENV_MODE:
-        glparamstate.texture_env_mode = param;
+        te->mode = param;
+        break;
+    }
+}
+
+void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params)
+{
+    int unit = glparamstate.active_texture;
+    OgxTexEnvironment *te = &glparamstate.texture_env[unit];
+    switch (pname) {
+    case GL_TEXTURE_ENV_COLOR:
+        te->color = gxcol_new_fv(params);
+        break;
+    default:
+        glTexEnvf(target, pname, params[0]);
+        break;
+    }
+}
+
+void glTexEnviv(GLenum target, GLenum pname, const GLint *params)
+{
+    switch (pname) {
+    case GL_TEXTURE_ENV_COLOR:
+        GLfloat p[4] = {
+            scaled_int(params[0]),
+            scaled_int(params[1]),
+            scaled_int(params[2]),
+            scaled_int(params[3]),
+        };
+        glTexEnvfv(target, pname, p);
+        break;
+    default:
+        glTexEnvi(target, pname, params[0]);
         break;
     }
 }
@@ -321,9 +387,9 @@ static void update_texture(const void *data, int level, GLenum format, GLenum ty
 void glTexImage2D(GLenum target, GLint level, GLint internalFormat, GLsizei width, GLsizei height,
                   GLint border, GLenum format, GLenum type, const GLvoid *data)
 {
-
+    int tex_id = curr_tex();
     // Initial checks
-    if (!TEXTURE_IS_RESERVED(texture_list[glparamstate.glcurtex]))
+    if (!TEXTURE_IS_RESERVED(texture_list[tex_id]))
         return;
     if (target != GL_TEXTURE_2D)
         return; // FIXME Implement non 2D textures
@@ -331,7 +397,7 @@ void glTexImage2D(GLenum target, GLint level, GLint internalFormat, GLsizei widt
     GX_DrawDone(); // Very ugly, we should have a list of used textures and only wait if we are using the curr tex.
                    // This way we are sure that we are not modifying a texture which is being drawn
 
-    gltexture_ *currtex = &texture_list[glparamstate.glcurtex];
+    gltexture_ *currtex = &texture_list[tex_id];
 
     uint8_t gx_format = _ogx_find_best_gx_format(format, internalFormat,
                                                  width, height);
@@ -399,7 +465,8 @@ void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
                      GLsizei width, GLsizei height, GLenum format, GLenum type,
                      const GLvoid *data)
 {
-    if (!TEXTURE_IS_USED(texture_list[glparamstate.glcurtex])) {
+    int tex_id = curr_tex();
+    if (!TEXTURE_IS_USED(texture_list[tex_id])) {
         set_error(GL_INVALID_OPERATION);
         return;
     }
@@ -409,7 +476,7 @@ void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
         return;
     }
 
-    gltexture_ *currtex = &texture_list[glparamstate.glcurtex];
+    gltexture_ *currtex = &texture_list[tex_id];
 
     TextureInfo ti;
     texture_get_info(&currtex->texobj, &ti);
@@ -439,7 +506,8 @@ void glBindTexture(GLenum target, GLuint texture)
 
     /* We don't load the texture now, since its texels might not have been
      * defined yet. We do this when setting up the texturing TEV stage. */
-    glparamstate.glcurtex = texture;
+    int unit = glparamstate.active_texture;
+    glparamstate.texture_env[unit].glcurtex = texture;
 }
 
 void glTexImage3D(GLenum target, GLint level, GLint internalFormat,

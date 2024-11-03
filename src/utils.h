@@ -35,6 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "state.h"
 
 #include <gctypes.h>
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -60,6 +61,11 @@ static inline float clampf_11(float n)
         return -1.0f;
     else
         return n;
+}
+
+static inline float scaled_int(int v)
+{
+    return ((float)v) / INT_MAX;
 }
 
 static inline void floatcpy(float *dest, const float *src, size_t count)
@@ -130,7 +136,7 @@ static inline bool gxcol_equal(GXColor a, GXColor b)
     return *(int32_t*)&a == *(int32_t*)&b;
 }
 
-static inline GXColor gxcol_new_fv(float *components)
+static inline GXColor gxcol_new_fv(const float *components)
 {
     GXColor c = {
         (u8)(components[0] * 255.0f),
@@ -141,7 +147,7 @@ static inline GXColor gxcol_new_fv(float *components)
     return c;
 }
 
-static inline void gxcol_mulfv(GXColor *color, float *components)
+static inline void gxcol_mulfv(GXColor *color, const float *components)
 {
     color->r *= components[0];
     color->g *= components[1];
@@ -149,7 +155,7 @@ static inline void gxcol_mulfv(GXColor *color, float *components)
     color->a *= components[3];
 }
 
-static inline GXColor gxcol_cpy_mulfv(GXColor color, float *components)
+static inline GXColor gxcol_cpy_mulfv(GXColor color, const float *components)
 {
     color.r *= components[0];
     color.g *= components[1];

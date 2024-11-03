@@ -54,6 +54,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "selection.h"
 #include "state.h"
 #include "stencil.h"
+#include "texture_unit.h"
 #include "utils.h"
 #include "vbo.h"
 
@@ -233,7 +234,19 @@ void ogx_initialize()
     glparamstate.alpha_ref = 0;
     glparamstate.alphatest_enabled = 0;
     glparamstate.frontcw = 0; // By default front is CCW
-    glparamstate.texture_env_mode = GL_MODULATE;
+    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+        OgxTexEnvironment *te = &glparamstate.texture_env[i];
+        te->mode = GL_MODULATE;
+        te->combine_rgb = te->combine_alpha = GL_MODULATE;
+        te->source_rgb[0] = te->source_alpha[0] = GL_TEXTURE;
+        te->source_rgb[1] = te->source_alpha[1] = GL_PREVIOUS;
+        te->source_rgb[2] = te->source_alpha[2] = GL_CONSTANT;
+        te->operand_rgb[0] = te->operand_rgb[1] = GL_SRC_COLOR;
+        te->operand_alpha[0] = te->operand_alpha[1] = GL_SRC_ALPHA;
+        // This is not a mistake, op 2 RGB is also SRC_ALPHA!
+        te->operand_rgb[2] = te->operand_alpha[2] = GL_SRC_ALPHA;
+        te->color.r = te->color.g = te->color.b = te->color.a = 0;
+    }
     glparamstate.texture_gen_mode = GL_EYE_LINEAR;
     glparamstate.texture_gen_enabled = 0;
     /* All the other plane elements should be set to 0.0f */
@@ -1965,88 +1978,6 @@ static void setup_fog()
     GX_SetFog(mode, start, end, near, far, color);
 }
 
-static void setup_texture_gen(int *tex_mtxs)
-{
-    Mtx m;
-
-    if (!glparamstate.texture_gen_enabled) {
-        GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
-        return;
-    }
-
-    /* The GX API does not allow setting different inputs and generation modes
-     * for the S and T coordinates; so, if one of them is enabled, we assume
-     * that both share the same generation mode. */
-    u32 input_type = GX_TG_TEX0;
-    u32 matrix_src = GX_IDENTITY;
-    switch (glparamstate.texture_gen_mode) {
-    case GL_OBJECT_LINEAR:
-        input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
-        set_gx_mtx_rowv(0, m, glparamstate.texture_object_plane_s);
-        set_gx_mtx_rowv(1, m, glparamstate.texture_object_plane_t);
-        set_gx_mtx_row(2, m, 0.0f, 0.0f, 1.0f, 0.0f);
-        GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
-        ++(*tex_mtxs);
-        break;
-    case GL_EYE_LINEAR:
-        input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
-        Mtx eye_plane;
-        set_gx_mtx_rowv(0, eye_plane, glparamstate.texture_eye_plane_s);
-        set_gx_mtx_rowv(1, eye_plane, glparamstate.texture_eye_plane_t);
-        set_gx_mtx_row(2, eye_plane, 0.0f, 0.0f, 1.0f, 0.0f);
-        guMtxConcat(eye_plane, glparamstate.modelview_matrix, m);
-        GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
-        ++(*tex_mtxs);
-        break;
-    default:
-        warning("Unsupported texture coordinate generation mode %x",
-                glparamstate.texture_gen_mode);
-    }
-
-    GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, input_type, matrix_src);
-}
-
-static void setup_texture_stage(u8 stage, u8 raster_color, u8 raster_alpha,
-                                u8 channel, int *tex_mtxs)
-{
-    switch (glparamstate.texture_env_mode) {
-    case GL_REPLACE:
-        // In data: a: Texture Color
-        GX_SetTevColorIn(stage, GX_CC_TEXC, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO);
-        GX_SetTevAlphaIn(stage, GX_CA_TEXA, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO);
-        break;
-    case GL_ADD:
-        // In data: d: Texture Color a: raster value, Operation: a+d
-        GX_SetTevColorIn(stage, raster_color, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
-        GX_SetTevAlphaIn(stage, raster_alpha, GX_CA_ZERO, GX_CA_ZERO, GX_CA_TEXA);
-        break;
-    case GL_BLEND:
-        /* In data: c: Texture Color, a: raster value, b: tex env
-         * Operation: a(1-c)+b*c
-         * Until we implement GL_TEXTURE_ENV_COLOR, use white (GX_CC_ONE) for
-         * the tex env color. */
-        GX_SetTevColorIn(stage, raster_color, GX_CC_ONE, GX_CC_TEXC, GX_CC_ZERO);
-        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
-        break;
-    case GL_MODULATE:
-    default:
-        // In data: c: Texture Color b: raster value, Operation: b*c
-        GX_SetTevColorIn(stage, GX_CC_ZERO, raster_color, GX_CC_TEXC, GX_CC_ZERO);
-        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
-        break;
-    }
-    GX_SetTevColorOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
-    GX_SetTevAlphaOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
-    GX_SetTevOrder(stage, GX_TEXCOORD0, GX_TEXMAP0, channel);
-    GX_LoadTexObj(&texture_list[glparamstate.glcurtex].texobj, GX_TEXMAP0);
-    if (glparamstate.dirty.bits.dirty_texture_gen) {
-        setup_texture_gen(tex_mtxs);
-        glparamstate.dirty.bits.dirty_texture_gen = 0;
-    }
-}
-
 bool _ogx_setup_render_stages()
 {
     int stages = 0, tex_coords = 0, tex_maps = 0, tex_mtxs = 0;
@@ -2149,11 +2080,8 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Do not select any raster value, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            setup_texture_stage(GX_TEVSTAGE2, GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL,
-                                &tex_mtxs);
-            stages++;
-            tex_coords++;
-            tex_maps++;
+            _ogx_setup_texture_stages(&stages, &tex_coords, &tex_maps, &tex_mtxs,
+                                      GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL);
         }
     } else {
         // Unlit scene
@@ -2171,7 +2099,6 @@ bool _ogx_setup_render_stages()
             material_source = GX_SRC_REG;
         }
 
-        stages = 1;
         GX_SetNumChans(1);
 
         // Disable lighting and output vertex color to the rasterized color
@@ -2179,12 +2106,11 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            setup_texture_stage(GX_TEVSTAGE0,
-                                GX_CC_RASC, GX_CA_RASA,
-                                GX_COLOR0A0, &tex_mtxs);
-            tex_coords++;
-            tex_maps++;
+            _ogx_setup_texture_stages(&stages, &tex_coords, &tex_maps, &tex_mtxs,
+                                 GX_CC_RASC, GX_CA_RASA,
+                                 GX_COLOR0A0);
         } else {
+            stages = 1;
             // In data: d: Raster Color
             GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
             GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
@@ -2590,7 +2516,6 @@ void glHint(GLenum target, GLenum mode) {}
 
 void glLineStipple(GLint factor, GLushort pattern) {}
 void glPolygonStipple(const GLubyte *mask) {}
-void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {}
 void glLightModelf(GLenum pname, GLfloat param) {}
 void glLightModeli(GLenum pname, GLint param) {}
 void glPushAttrib(GLbitfield mask) {}

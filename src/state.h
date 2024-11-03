@@ -123,7 +123,6 @@ typedef struct glparams_
     char active_texture;
     uint8_t alpha_func, alpha_ref, alphatest_enabled;
     uint8_t clip_plane_mask;
-    uint16_t texture_env_mode;
     /* There should be 4 of these (for S, T, R, Q) but GX uses a single
      * transformation for all of them */
     uint16_t texture_gen_mode;
@@ -132,7 +131,6 @@ typedef struct glparams_
     GLenum render_mode;
     GLenum active_buffer; /* no separate buffers for reading and writing */
     GLenum polygon_mode;
-    int glcurtex;
     int draw_count;
     GXColor clear_color;
     GXColor accum_clear_color;
@@ -143,6 +141,18 @@ typedef struct glparams_
     float transfer_depth_bias;
     int16_t transfer_index_shift;
     int16_t transfer_index_offset;
+
+    struct TexEnvironment {
+        int glcurtex;
+        GLenum mode;
+        GLenum combine_rgb;
+        GLenum source_rgb[3];
+        GLenum operand_rgb[3];
+        GLenum combine_alpha;
+        GLenum source_alpha[3];
+        GLenum operand_alpha[3];
+        GXColor color; // TODO: still unused
+    } texture_env[MAX_TEXTURE_UNITS];
 
     OgxPixelMapTables *pixel_maps; /* Only allocated if glPixelMap is called */
 
@@ -291,6 +301,8 @@ typedef struct glparams_
 
     GLenum error;
 } glparams_;
+
+typedef struct TexEnvironment OgxTexEnvironment;
 
 extern glparams_ _ogx_state;
 
