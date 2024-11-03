@@ -339,7 +339,7 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
     return ret;
 }
 
-static void setup_combine_operation(const OgxTexEnvironment *te,
+static void setup_combine_operation(const OgxTextureUnit *te,
                                     u8 stage)
 {
     TevSource source_rgb[3];
@@ -366,12 +366,12 @@ static void setup_combine_operation(const OgxTexEnvironment *te,
                      GX_TEVPREV);
 }
 
-static void setup_texture_stage(const OgxTexEnvironment *te,
+static void setup_texture_stage(const OgxTextureUnit *tu,
                                 u8 stage, u8 tex_coord, u8 tex_map,
                                 u8 raster_color, u8 raster_alpha,
                                 u8 channel, int *tex_mtxs)
 {
-    switch (te->mode) {
+    switch (tu->mode) {
     case GL_REPLACE:
         // In data: a: Texture Color
         GX_SetTevColorIn(stage, GX_CC_TEXC, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO);
@@ -391,7 +391,7 @@ static void setup_texture_stage(const OgxTexEnvironment *te,
         GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     case GL_COMBINE:
-        setup_combine_operation(te, stage);
+        setup_combine_operation(tu, stage);
         break;
     case GL_MODULATE:
     default:
@@ -400,7 +400,7 @@ static void setup_texture_stage(const OgxTexEnvironment *te,
         GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     }
-    if (!te->mode != GL_COMBINE) {
+    if (!tu->mode != GL_COMBINE) {
         /* setup_combine_operation() already sets the TEV ops */
         GX_SetTevColorOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE,
                          GX_TEVPREV);
@@ -408,7 +408,7 @@ static void setup_texture_stage(const OgxTexEnvironment *te,
                          GX_TEVPREV);
     }
     GX_SetTevOrder(stage, tex_coord, tex_map, channel);
-    GX_LoadTexObj(&texture_list[te->glcurtex].texobj, tex_map);
+    GX_LoadTexObj(&texture_list[tu->glcurtex].texobj, tex_map);
     if (glparamstate.dirty.bits.dirty_texture_gen) {
         setup_texture_gen(tex_mtxs);
         glparamstate.dirty.bits.dirty_texture_gen = 0;
@@ -428,8 +428,8 @@ void _ogx_setup_texture_stages(int *stages, int *tex_coords,
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (!(glparamstate.texture_enabled & (1 << tex))) continue;
 
-        OgxTexEnvironment *te = &glparamstate.texture_env[tex];
-        setup_texture_stage(te, stage, tex_coord, tex_map,
+        OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
+        setup_texture_stage(tu, stage, tex_coord, tex_map,
                             raster_color, raster_alpha, channel, tex_mtxs);
         stage++;
         tex_coord++;

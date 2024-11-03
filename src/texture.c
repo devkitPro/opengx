@@ -75,7 +75,7 @@ typedef struct {
 static inline int curr_tex()
 {
     int unit = glparamstate.active_texture;
-    return glparamstate.texture_env[unit].glcurtex;
+    return glparamstate.texture_unit[unit].glcurtex;
 }
 
 static uint32_t calc_memory(int w, int h, uint32_t format)
@@ -251,36 +251,36 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
     HANDLE_CALL_LIST(TEX_ENV, target, pname, param);
 
     int unit = glparamstate.active_texture;
-    OgxTexEnvironment *te = &glparamstate.texture_env[unit];
+    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
     switch (pname) {
     case GL_COMBINE_ALPHA:
-        te->combine_alpha = param;
+        tu->combine_alpha = param;
         break;
     case GL_COMBINE_RGB:
-        te->combine_rgb = param;
+        tu->combine_rgb = param;
         break;
     case GL_OPERAND0_ALPHA:
     case GL_OPERAND1_ALPHA:
     case GL_OPERAND2_ALPHA:
-        te->operand_alpha[pname - GL_OPERAND0_ALPHA] = param;
+        tu->operand_alpha[pname - GL_OPERAND0_ALPHA] = param;
         break;
     case GL_SOURCE0_ALPHA:
     case GL_SOURCE1_ALPHA:
     case GL_SOURCE2_ALPHA:
-        te->source_alpha[pname - GL_SOURCE0_ALPHA] = param;
+        tu->source_alpha[pname - GL_SOURCE0_ALPHA] = param;
         break;
     case GL_OPERAND0_RGB:
     case GL_OPERAND1_RGB:
     case GL_OPERAND2_RGB:
-        te->operand_rgb[pname - GL_OPERAND0_RGB] = param;
+        tu->operand_rgb[pname - GL_OPERAND0_RGB] = param;
         break;
     case GL_SOURCE0_RGB:
     case GL_SOURCE1_RGB:
     case GL_SOURCE2_RGB:
-        te->source_rgb[pname - GL_SOURCE0_RGB] = param;
+        tu->source_rgb[pname - GL_SOURCE0_RGB] = param;
         break;
     case GL_TEXTURE_ENV_MODE:
-        te->mode = param;
+        tu->mode = param;
         break;
     }
 }
@@ -288,10 +288,10 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
 void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params)
 {
     int unit = glparamstate.active_texture;
-    OgxTexEnvironment *te = &glparamstate.texture_env[unit];
+    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
     switch (pname) {
     case GL_TEXTURE_ENV_COLOR:
-        te->color = gxcol_new_fv(params);
+        tu->color = gxcol_new_fv(params);
         break;
     default:
         glTexEnvf(target, pname, params[0]);
@@ -507,7 +507,7 @@ void glBindTexture(GLenum target, GLuint texture)
     /* We don't load the texture now, since its texels might not have been
      * defined yet. We do this when setting up the texturing TEV stage. */
     int unit = glparamstate.active_texture;
-    glparamstate.texture_env[unit].glcurtex = texture;
+    glparamstate.texture_unit[unit].glcurtex = texture;
 }
 
 void glTexImage3D(GLenum target, GLint level, GLint internalFormat,

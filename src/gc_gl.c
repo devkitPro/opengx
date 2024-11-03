@@ -235,17 +235,17 @@ void ogx_initialize()
     glparamstate.alphatest_enabled = 0;
     glparamstate.frontcw = 0; // By default front is CCW
     for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-        OgxTexEnvironment *te = &glparamstate.texture_env[i];
-        te->mode = GL_MODULATE;
-        te->combine_rgb = te->combine_alpha = GL_MODULATE;
-        te->source_rgb[0] = te->source_alpha[0] = GL_TEXTURE;
-        te->source_rgb[1] = te->source_alpha[1] = GL_PREVIOUS;
-        te->source_rgb[2] = te->source_alpha[2] = GL_CONSTANT;
-        te->operand_rgb[0] = te->operand_rgb[1] = GL_SRC_COLOR;
-        te->operand_alpha[0] = te->operand_alpha[1] = GL_SRC_ALPHA;
+        OgxTextureUnit *tu = &glparamstate.texture_unit[i];
+        tu->mode = GL_MODULATE;
+        tu->combine_rgb = tu->combine_alpha = GL_MODULATE;
+        tu->source_rgb[0] = tu->source_alpha[0] = GL_TEXTURE;
+        tu->source_rgb[1] = tu->source_alpha[1] = GL_PREVIOUS;
+        tu->source_rgb[2] = tu->source_alpha[2] = GL_CONSTANT;
+        tu->operand_rgb[0] = tu->operand_rgb[1] = GL_SRC_COLOR;
+        tu->operand_alpha[0] = tu->operand_alpha[1] = GL_SRC_ALPHA;
         // This is not a mistake, op 2 RGB is also SRC_ALPHA!
-        te->operand_rgb[2] = te->operand_alpha[2] = GL_SRC_ALPHA;
-        te->color.r = te->color.g = te->color.b = te->color.a = 0;
+        tu->operand_rgb[2] = tu->operand_alpha[2] = GL_SRC_ALPHA;
+        tu->color.r = tu->color.g = tu->color.b = tu->color.a = 0;
     }
     glparamstate.texture_gen_mode = GL_EYE_LINEAR;
     glparamstate.texture_gen_enabled = 0;

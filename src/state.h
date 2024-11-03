@@ -142,7 +142,7 @@ typedef struct glparams_
     int16_t transfer_index_shift;
     int16_t transfer_index_offset;
 
-    struct TexEnvironment {
+    struct TextureUnit {
         int glcurtex;
         GLenum mode;
         GLenum combine_rgb;
@@ -152,7 +152,7 @@ typedef struct glparams_
         GLenum source_alpha[3];
         GLenum operand_alpha[3];
         GXColor color; // TODO: still unused
-    } texture_env[MAX_TEXTURE_UNITS];
+    } texture_unit[MAX_TEXTURE_UNITS];
 
     OgxPixelMapTables *pixel_maps; /* Only allocated if glPixelMap is called */
 
@@ -302,7 +302,7 @@ typedef struct glparams_
     GLenum error;
 } glparams_;
 
-typedef struct TexEnvironment OgxTexEnvironment;
+typedef struct TextureUnit OgxTextureUnit;
 
 extern glparams_ _ogx_state;
 
