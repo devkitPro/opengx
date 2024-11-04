@@ -250,8 +250,7 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
 {
     HANDLE_CALL_LIST(TEX_ENV, target, pname, param);
 
-    int unit = glparamstate.active_texture;
-    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+    OgxTextureUnit *tu = active_tex_unit();
     switch (pname) {
     case GL_COMBINE_ALPHA:
         tu->combine_alpha = param;
@@ -287,8 +286,7 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
 
 void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params)
 {
-    int unit = glparamstate.active_texture;
-    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+    OgxTextureUnit *tu = active_tex_unit();
     switch (pname) {
     case GL_TEXTURE_ENV_COLOR:
         tu->color = gxcol_new_fv(params);

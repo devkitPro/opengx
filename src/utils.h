@@ -131,10 +131,15 @@ static inline void mtx44project(const Mtx44 p, const guVector *v,
     }
 }
 
-static inline Mtx *current_tex_matrix()
+static inline OgxTextureUnit *active_tex_unit()
 {
     int unit = glparamstate.active_texture;
-    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+    return &glparamstate.texture_unit[unit];
+}
+
+static inline Mtx *current_tex_matrix()
+{
+    OgxTextureUnit *tu = active_tex_unit();
     return &tu->matrix[tu->matrix_index];
 }
 

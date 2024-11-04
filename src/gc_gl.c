@@ -1024,8 +1024,7 @@ void glPopMatrix(void)
         glparamstate.cur_modv_mat--;
     case 2:
         {
-            int unit = glparamstate.active_texture;
-            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            OgxTextureUnit *tu = active_tex_unit();
             if (tu->matrix_index <= 0) {
                 set_error(GL_STACK_UNDERFLOW);
                 return;
@@ -1061,8 +1060,7 @@ void glPushMatrix(void)
         break;
     case 2:
         {
-            int unit = glparamstate.active_texture;
-            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            OgxTextureUnit *tu = active_tex_unit();
             if (tu->matrix_index >= MAX_TEXTURE_MAT_STACK - 1) {
                 set_error(GL_STACK_OVERFLOW);
                 return;
@@ -1085,8 +1083,7 @@ void glLoadMatrixf(const GLfloat *m)
         break;
     case 2:
         {
-            int unit = glparamstate.active_texture;
-            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            OgxTextureUnit *tu = active_tex_unit();
             gl_matrix_to_gx(m, tu->matrix[tu->matrix_index]);
         }
         break;
@@ -1148,8 +1145,7 @@ void glLoadIdentity()
         break;
     case 2:
         {
-            int unit = glparamstate.active_texture;
-            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            OgxTextureUnit *tu = active_tex_unit();
             guMtxIdentity(tu->matrix[tu->matrix_index]);
         }
         break;
