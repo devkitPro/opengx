@@ -415,8 +415,8 @@ static void setup_texture_stage_matrix(const OgxTextureUnit *tu,
                                                 in the GX vertex array */
     u32 matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
     Mtx *matrix = (Mtx *)&tu->matrix[tu->matrix_index];
-    GX_LoadTexMtxImm(*matrix, matrix_src, GX_MTX3x4);
-    GX_SetTexCoordGen(tex_coord, GX_TG_MTX3x4, input_type, matrix_src);
+    GX_LoadTexMtxImm(*matrix, matrix_src, GX_MTX2x4);
+    GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, input_type, matrix_src);
     ++(*tex_mtxs);
 }
 
