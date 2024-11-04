@@ -267,11 +267,6 @@ void ogx_initialize()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    /* Load the identity matrix into GX_PNMTX0 */
-    Mtx mv;
-    guMtxIdentity(mv);
-    GX_LoadPosMtxImm(mv, GX_PNMTX0);
-
     glparamstate.imm_mode.current_color[0] = 1.0f; // Default imm data, could be wrong
     glparamstate.imm_mode.current_color[1] = 1.0f;
     glparamstate.imm_mode.current_color[2] = 1.0f;
@@ -438,8 +433,7 @@ void ogx_initialize()
 
 void _ogx_setup_2D_projection()
 {
-    /* GX_PNMTX0 is fixed to be the identity matrix */
-    GX_SetCurrentMtx(GX_PNMTX0);
+    GX_SetCurrentMtx(GX_IDENTITY);
 
     Mtx44 proj;
     /* The 0.5f is to center the drawing into the pixels. */
