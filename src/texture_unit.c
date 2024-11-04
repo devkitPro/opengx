@@ -30,11 +30,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "texture_unit.h"
 
 #include "debug.h"
+#include "gpu_resources.h"
 #include "utils.h"
 
 static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
-                              u8 texture_matrix, u8 matrix_input,
-                              int *tex_mtxs)
+                              u8 texture_matrix, u8 matrix_input)
 {
     Mtx m;
 
@@ -46,23 +46,21 @@ static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
     switch (tu->gen_mode) {
     case GL_OBJECT_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
+        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
         set_gx_mtx_rowv(0, m, tu->texture_object_plane_s);
         set_gx_mtx_rowv(1, m, tu->texture_object_plane_t);
         set_gx_mtx_row(2, m, 0.0f, 0.0f, 1.0f, 0.0f);
         GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
-        ++(*tex_mtxs);
         break;
     case GL_EYE_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
+        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
         Mtx eye_plane;
         set_gx_mtx_rowv(0, eye_plane, tu->texture_eye_plane_s);
         set_gx_mtx_rowv(1, eye_plane, tu->texture_eye_plane_t);
         set_gx_mtx_row(2, eye_plane, 0.0f, 0.0f, 1.0f, 0.0f);
         guMtxConcat(eye_plane, glparamstate.modelview_matrix, m);
         GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
-        ++(*tex_mtxs);
         break;
     default:
         warning("Unsupported texture coordinate generation mode %x",
@@ -418,45 +416,52 @@ static void setup_texture_stage_matrix(const OgxTextureUnit *tu,
     memcpy(m, tu->matrix[tu->matrix_index], 8 * sizeof(float));
     m[2][0] = m[2][1] = m[2][3] = 0.0f;
     m[2][2] = 1.0f;
+    DCStoreRange(m, sizeof(m));
     GX_LoadTexMtxImm(m, dtt_matrix, GX_MTX3x4);
 }
 
-void _ogx_setup_texture_stages(int *stages, int *tex_coords,
-                               int *tex_maps, int *tex_mtxs,
-                               u8 raster_color, u8 raster_alpha,
+void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
                                u8 channel)
 {
-    u8 stage = GX_TEVSTAGE0 + *stages;
-    u8 tex_coord = GX_TEXCOORD0 + *tex_coords;
-    u8 tex_map = GX_TEXMAP0 + *tex_maps;
-    u8 tex_mtx = GX_TEXMTX0 + *tex_mtxs * 3;
-    u8 dtt_matrix = GX_DTTMTX0 + *tex_mtxs * 3; // post-processing tex matrix
-    u8 matrix_input = GX_TG_TEX0 + *tex_coords;
-
+    /* This variable holds the number of enabled texture units for which the
+     * client provided texture coordinates (not generated, but literally a
+     * GX_VA_TEX* array was specified). */
+    int units_with_coordinates = 0;
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (!(glparamstate.texture_enabled & (1 << tex))) continue;
 
         OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
+
+        /* True if the client provided texture coordinates for this unit. */
+        bool has_texture_coordinates =
+            glparamstate.cs.texcoord_enabled & (1 << tex);
+        u8 input_coordinates;
+        if (has_texture_coordinates) {
+            input_coordinates = GX_TG_TEX0 + units_with_coordinates++;
+        } else if (!tu->gen_enabled) {
+            warning("Skipping texture unit, since coordinates are missing.");
+            continue;
+        }
+
+        u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
+        u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
+        u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
+        u8 dtt_matrix = GX_DTTMTX0 + _ogx_gpu_resources->dttmtx_first++ * 3;
+
         setup_texture_stage(tu, stage, tex_coord, tex_map,
                             raster_color, raster_alpha, channel);
 
         setup_texture_stage_matrix(tu, dtt_matrix);
         if (tu->gen_enabled) {
-            setup_texture_gen(tu, tex_coord, dtt_matrix, matrix_input,
-                              tex_mtxs);
+            setup_texture_gen(tu, tex_coord, dtt_matrix, input_coordinates);
         } else {
-            GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, matrix_input,
+            GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, input_coordinates,
                                GX_IDENTITY, FALSE, dtt_matrix);
         }
-        stage++;
-        tex_coord++;
-        tex_map++;
-        dtt_matrix += 3;
-        matrix_input++;
+
+        /* All texture stages after the first one get their vertex color from
+         * the previous stage */
         raster_color = GX_CC_CPREV;
         raster_alpha = GX_CA_APREV;
     }
-    *stages = stage - GX_TEVSTAGE0;
-    *tex_coords = tex_coord - GX_TEXCOORD0;
-    *tex_maps = tex_map - GX_TEXMAP0;
 }

@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "clip.h"
 
 #include "debug.h"
+#include "gpu_resources.h"
 #include "state.h"
 #include "utils.h"
 
@@ -65,16 +66,14 @@ static void load_clip_texture(u8 tex_map)
     GX_LoadTexObj(&s_clip_texture, tex_map);
 }
 
-static bool setup_tev(int *stages, int *tex_coords, int tex_maps, int *tex_mtxs,
-                      int plane_index0, int plane_index1)
+static bool setup_tev(u8 tex_map, int plane_index0, int plane_index1)
 {
-    u8 stage = GX_TEVSTAGE0 + *stages;
-    u8 tex_coord = GX_TEXCOORD0 + *tex_coords;
-    u8 tex_map = GX_TEXMAP0 + tex_maps;
-    u8 tex_mtx = GX_TEXMTX0 + *tex_mtxs * 3;
+    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
+    u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
+    u8 tex_mtx = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
 
     debug(OGX_LOG_CLIPPING, "%d TEV stages, %d tex_coords, %d tex_maps",
-          *stages, *tex_coords, tex_maps);
+          stage, tex_coord, tex_map);
 
     /* Set a TEV stage that draws only where the clip texture is > 0 */
     GX_SetTevColorIn(stage, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
@@ -110,10 +109,6 @@ static bool setup_tev(int *stages, int *tex_coords, int tex_maps, int *tex_mtxs,
     GX_LoadTexMtxImm(m, tex_mtx, GX_MTX2x4);
 
     GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, GX_TG_POS, tex_mtx);
-
-    ++(*stages);
-    ++(*tex_coords);
-    ++(*tex_mtxs);
     return true;
 }
 
@@ -142,11 +137,11 @@ bool _ogx_clip_is_point_clipped(const guVector *p)
     return false;
 }
 
-void _ogx_clip_setup_tev(int *stages, int *tex_coords,
-                         int *tex_maps, int *tex_mtxs)
+void _ogx_clip_setup_tev()
 {
     debug(OGX_LOG_CLIPPING, "setting up clip TEV");
-    load_clip_texture(*tex_maps);
+    u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
+    load_clip_texture(tex_map);
 
     int plane_index0 = -1;
     for (int i = 0; i < MAX_CLIP_PLANES; i++) {
@@ -156,18 +151,15 @@ void _ogx_clip_setup_tev(int *stages, int *tex_coords,
             plane_index0 = i;
         } else {
             /* We found two enabled planes, we can setup a TEV stage for them. */
-            setup_tev(stages, tex_coords, *tex_maps, tex_mtxs,
-                      plane_index0, i);
+            setup_tev(tex_map, plane_index0, i);
             plane_index0 = -1;
         }
     }
 
     if (plane_index0 >= 0) {
         /* We have an odd number of clip planes */
-        setup_tev(stages, tex_coords, *tex_maps, tex_mtxs,
-                  plane_index0, -1);
+        setup_tev(tex_map, plane_index0, -1);
     }
-    ++(*tex_maps);
 }
 
 void _ogx_clip_enabled(int plane)

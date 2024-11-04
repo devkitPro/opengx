@@ -45,8 +45,7 @@ extern "C" {
 void _ogx_clip_enabled(int plane);
 void _ogx_clip_disabled(int plane);
 
-void _ogx_clip_setup_tev(int *stages, int *tex_coords,
-                         int *tex_maps, int *tex_mtxs);
+void _ogx_clip_setup_tev();
 
 bool _ogx_clip_is_point_clipped(const guVector *p);
 

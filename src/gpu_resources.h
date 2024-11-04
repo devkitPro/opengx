@@ -27,20 +27,63 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
-#ifndef OPENGX_TEXTURE_UNIT_H
-#define OPENGX_TEXTURE_UNIT_H
+#ifndef OPENGX_GPU_RESOURCES_H
+#define OPENGX_GPU_RESOURCES_H
 
-#include "state.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
-                               u8 channel);
+typedef struct {
+    /* *_first: number of the first available resource
+     * *_end: number of the first *not* available resource
+     *
+     * The number of available resources is X_end - X_first. Each member
+     * specifies the number starting from zero, so that in order to get the ID
+     * of the desired resource, you need to add the base ID of the resource:
+     * for example, to get the actual stage number, you'd have to do
+     *
+     *     stage = number + GX_TEVSTAGE0
+     *
+     * and, for matrix types,
+     *
+     *     texmtx = number * 3 + GX_TEXMTX0
+     *
+     * Fields are named according to libogc's constants, to minimize confusion.
+     */
+    uint8_t tevstage_first;
+    uint8_t tevstage_end;
+    uint8_t kcolor_first;
+    uint8_t kcolor_end;
+    uint8_t texcoord_first;
+    uint8_t texcoord_end;
+    uint8_t pnmtx_first;
+    uint8_t pnmtx_end;
+    uint8_t dttmtx_first;
+    uint8_t dttmtx_end;
+    uint8_t texmtx_first;
+    uint8_t texmtx_end;
+    uint8_t texmap_first;
+    uint8_t texmap_end;
+    /* We could add the VTXFMT here too, if we decided to reserve them for
+     * specific goals; for the time being, we only use GX_VTXFMT0 and set it up
+     * from scratch every time. */
+} OgxGpuResources;
+
+extern OgxGpuResources *_ogx_gpu_resources;
+
+void _ogx_gpu_resources_init();
+void _ogx_gpu_resources_push();
+void _ogx_gpu_resources_pop();
+
+/* TODO: provide an API for the integration library, so that it can book some
+ * resources for itself -- or, in alternative, document which resources it can
+ * use outside of a frame drawing phase. */
 
 #ifdef __cplusplus
 } // extern C
 #endif
 
-#endif /* OPENGX_TEXTURE_UNIT_H */
+#endif /* OPENGX_GPU_RESOURCES_H */

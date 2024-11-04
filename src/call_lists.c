@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "call_lists.h"
 #include "debug.h"
 #include "efb.h"
+#include "gpu_resources.h"
 #include "stencil.h"
 #include "utils.h"
 
@@ -296,6 +297,7 @@ static void run_draw_geometry(struct DrawGeometry *dg)
 
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
+    _ogx_gpu_resources_push();
     cs = glparamstate.cs;
     glparamstate.cs = dg->cs;
     _ogx_apply_state();
@@ -303,11 +305,14 @@ static void run_draw_geometry(struct DrawGeometry *dg)
     glparamstate.cs = cs;
 
     execute_draw_geometry_list(dg);
+    _ogx_gpu_resources_pop();
 
     glparamstate.draw_count++;
 
     if (glparamstate.stencil.enabled) {
+        _ogx_gpu_resources_push();
         _ogx_stencil_draw(flat_draw_geometry, dg);
+        _ogx_gpu_resources_pop();
     }
 }
 

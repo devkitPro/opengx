@@ -34,6 +34,8 @@ add_library(${TARGET} STATIC
     src/functions.c
     src/gc_gl.c
     src/getters.c
+    src/gpu_resources.c
+    src/gpu_resources.h
     src/image_DXT.c
     src/image_DXT.h
     src/opengx.h

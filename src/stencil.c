@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "debug.h"
 #include "efb.h"
+#include "gpu_resources.h"
 #include "state.h"
 #include "utils.h"
 
@@ -271,15 +272,8 @@ void _ogx_stencil_save_to_efb()
     _ogx_efb_buffer_save(s_stencil_buffer, OGX_EFB_COLOR);
 }
 
-static bool setup_tev_full(int *stages, int *tex_coords,
-                           int *tex_maps, int *tex_mtxs,
-                           bool invert_logic)
+static bool setup_tev_full(bool invert_logic)
 {
-    u8 stage = GX_TEVSTAGE0 + *stages;
-    u8 tex_coord = GX_TEXCOORD0 + *tex_coords;
-    u8 tex_map = GX_TEXMAP0 + *tex_maps;
-    u8 tex_mtx = GX_TEXMTX0 + *tex_mtxs * 3;
-
     /* TODO: keep track of the potential values of the stencil buffer, and
      * avoid drawing if we are sure that a match cannot happen. */
     uint8_t masked_ref = glparamstate.stencil.ref & glparamstate.stencil.mask;
@@ -291,8 +285,15 @@ static bool setup_tev_full(int *stages, int *tex_coords,
         return comp_type == TEV_COMP_ALWAYS;
     }
 
+    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
+    u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
+    u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
+    u8 tex_mtx = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++;
+
     debug(OGX_LOG_STENCIL, "%d TEV stages, %d tex_coords, %d tex_maps",
-          *stages, *tex_coords, *tex_maps);
+          _ogx_gpu_resources->tevstage_first,
+          _ogx_gpu_resources->texcoord_first,
+          _ogx_gpu_resources->texmap_first);
     u8 logical_op;
     u8 ref_value = GX_CA_KONST;
     bool invert_operands = false;
@@ -399,10 +400,6 @@ static bool setup_tev_full(int *stages, int *tex_coords,
     GX_SetTexCoordGen(tex_coord, matrix_type, GX_TG_POS, tex_mtx);
 
     GX_LoadTexObj(&s_stencil_texture, tex_map);
-    ++(*stages);
-    ++(*tex_coords);
-    ++(*tex_maps);
-    ++(*tex_mtxs);
     return true;
 }
 
@@ -415,11 +412,6 @@ static bool draw_op(uint16_t op,
         /* nothing to do */
         return false;
     }
-
-    int num_stages = 1;
-    int num_tex_coords = 0;
-    int num_tex_maps = 0;
-    int num_tex_mtxs = 0;
 
     uint8_t masked_ref = glparamstate.stencil.ref & glparamstate.stencil.wmask;
     if (!stencil_8bit()) {
@@ -458,7 +450,7 @@ static bool draw_op(uint16_t op,
     GX_SetColorUpdate(GX_TRUE);
     glparamstate.dirty.bits.dirty_color_update = 1;
 
-    u8 stage = GX_TEVSTAGE0;
+    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
     GX_SetTevColor(GX_TEVPREV, drawColor);
     GX_SetTevOrder(stage, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, GX_COLOR0A0);
     /* Pass the constant color */
@@ -473,17 +465,14 @@ static bool draw_op(uint16_t op,
 
 
     if (check_stencil) {
-        bool must_draw =
-            setup_tev_full(&num_stages, &num_tex_coords,
-                           &num_tex_maps, &num_tex_mtxs,
-                           invert_stencil);
+        bool must_draw = setup_tev_full(invert_stencil);
         if (!must_draw) return false;
     }
 
     s_stencil_texture_needs_update = true;
 
-    GX_SetNumTexGens(num_tex_coords);
-    GX_SetNumTevStages(num_stages);
+    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
+    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
 
     if (check_z) {
         /* Use the Z-buffer, but don't modify it! */
@@ -503,10 +492,10 @@ static bool draw_op(uint16_t op,
     return true;
 }
 
-bool _ogx_stencil_setup_tev(int *stages, int *tex_coords,
-                            int *tex_maps, int *tex_mtxs)
+bool _ogx_stencil_setup_tev()
 {
-    return setup_tev_full(stages, tex_coords, tex_maps, tex_mtxs, false);
+    bool must_draw = setup_tev_full(false);
+    return must_draw;
 }
 
 void _ogx_stencil_draw(OgxStencilDrawCallback callback, void *cb_data)

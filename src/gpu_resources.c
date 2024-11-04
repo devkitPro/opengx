@@ -27,20 +27,66 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
-#ifndef OPENGX_TEXTURE_UNIT_H
-#define OPENGX_TEXTURE_UNIT_H
+#include "gpu_resources.h"
 
-#include "state.h"
+#include <assert.h>
+#include <ogc/gx.h>
+#include <stdlib.h>
+#include <string.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/* We won't check the bounds of this stack. We'll just try to be careful not to
+ * overrun it (the struct itself is not that big, so we can increase this
+ * value, if needed). */
+#define GPU_RESOURCES_STACK_SIZE 3
 
-void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
-                               u8 channel);
+OgxGpuResources *_ogx_gpu_resources = NULL;
+OgxGpuResources *s_gpu_resources = NULL;
 
-#ifdef __cplusplus
-} // extern C
-#endif
+static void resources_init(OgxGpuResources *resources)
+{
+    /* Here we can book (steal) some resources that we want to reserve for
+     * OpenGX or for the integration library. */
+    resources->tevstage_first = 0;
+    resources->tevstage_end = GX_MAX_TEVSTAGE;
 
-#endif /* OPENGX_TEXTURE_UNIT_H */
+    resources->kcolor_first = 0;
+    resources->kcolor_end = GX_KCOLOR_MAX;
+
+    resources->texcoord_first = 0;
+    resources->texcoord_end = GX_MAXCOORD;
+
+    /* GX_PNMTX0 is reserved for the modelview matrix */
+    resources->pnmtx_first = 1;
+    resources->pnmtx_end = 10;
+
+    resources->dttmtx_first = 0;
+    resources->dttmtx_end = 20;
+
+    resources->texmtx_first = 0;
+    resources->texmtx_end = 10;
+
+    resources->texmap_first = 0;
+    resources->texmap_end = 8;
+}
+
+void _ogx_gpu_resources_init()
+{
+    if (s_gpu_resources) return;
+
+    s_gpu_resources =
+        malloc(sizeof(OgxGpuResources) * GPU_RESOURCES_STACK_SIZE);
+    resources_init(s_gpu_resources);
+    _ogx_gpu_resources = s_gpu_resources;
+}
+
+void _ogx_gpu_resources_push()
+{
+    OgxGpuResources *old = _ogx_gpu_resources;
+    memcpy(++_ogx_gpu_resources, old, sizeof(OgxGpuResources));
+}
+
+void _ogx_gpu_resources_pop()
+{
+    assert(_ogx_gpu_resources != s_gpu_resources);
+    _ogx_gpu_resources--;
+}

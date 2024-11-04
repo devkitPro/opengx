@@ -50,6 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "clip.h"
 #include "debug.h"
 #include "efb.h"
+#include "gpu_resources.h"
 #include "opengx.h"
 #include "selection.h"
 #include "state.h"
@@ -198,6 +199,8 @@ int ogx_prepare_swap_buffers()
 void ogx_initialize()
 {
     _ogx_log_init();
+
+    _ogx_gpu_resources_init();
 
     glparamstate.current_call_list.index = -1;
     GX_SetDispCopyGamma(GX_GM_1_0);
@@ -2027,15 +2030,13 @@ static void setup_fog()
 
 bool _ogx_setup_render_stages()
 {
-    int stages = 0, tex_coords = 0, tex_maps = 0, tex_mtxs = 0;
-
     if (glparamstate.lighting.enabled) {
         LightMasks light_mask = prepare_lighting();
 
         GXColor color_zero = { 0, 0, 0, 0 };
         GXColor color_gamb = gxcol_new_fv(glparamstate.lighting.globalambient);
 
-        stages = 2;
+        _ogx_gpu_resources->tevstage_first += 2;
         GX_SetNumChans(2);
 
         unsigned char vert_color_src = GX_SRC_VTX;
@@ -2127,8 +2128,7 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Do not select any raster value, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            _ogx_setup_texture_stages(&stages, &tex_coords, &tex_maps, &tex_mtxs,
-                                      GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL);
+            _ogx_setup_texture_stages(GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL);
         }
     } else {
         // Unlit scene
@@ -2153,11 +2153,10 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            _ogx_setup_texture_stages(&stages, &tex_coords, &tex_maps, &tex_mtxs,
-                                 GX_CC_RASC, GX_CA_RASA,
-                                 GX_COLOR0A0);
+            _ogx_setup_texture_stages(GX_CC_RASC, GX_CA_RASA, GX_COLOR0A0);
         } else {
-            stages = 1;
+            // Use one stage only
+            _ogx_gpu_resources->tevstage_first += 1;
             // In data: d: Raster Color
             GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
             GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
@@ -2170,17 +2169,19 @@ bool _ogx_setup_render_stages()
     }
 
     if (glparamstate.stencil.enabled) {
-        bool should_draw =
-            _ogx_stencil_setup_tev(&stages, &tex_coords, &tex_maps, &tex_mtxs);
+        bool should_draw = _ogx_stencil_setup_tev();
         if (!should_draw) return false;
     }
 
     if (glparamstate.clip_plane_mask != 0) {
-        _ogx_clip_setup_tev(&stages, &tex_coords, &tex_maps, &tex_mtxs);
+        _ogx_clip_setup_tev();
     }
 
-    GX_SetNumTevStages(stages);
-    GX_SetNumTexGens(tex_coords);
+    /* Stages and texture coordinate slots must be enabled sequentially, so we
+     * know that the number of used resources is given by
+     * OgxGpuResources::{tevstage,texcoord}_first. */
+    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
 
     setup_fog();
     return true;
@@ -2380,11 +2381,14 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;
     if (glparamstate.stencil.enabled) {
+        _ogx_gpu_resources_push();
         OgxDrawData draw_data = { gxmode, first, count };
         _ogx_stencil_draw(flat_draw_geometry, &draw_data);
+        _ogx_gpu_resources_pop();
     }
 
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
+    _ogx_gpu_resources_push();
     should_draw = _ogx_setup_render_stages();
     _ogx_apply_state();
 
@@ -2407,6 +2411,8 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
                             color_provide, texen);
         glparamstate.draw_count++;
     }
+
+    _ogx_gpu_resources_pop();
 }
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
@@ -2423,11 +2429,15 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     bool should_draw = true;
     int texen = glparamstate.cs.texcoord_enabled;
     if (glparamstate.stencil.enabled) {
+        _ogx_gpu_resources_push();
         OgxDrawElementsData draw_data = { gxmode, count, type, indices };
         _ogx_stencil_draw(flat_draw_elements, &draw_data);
+        _ogx_gpu_resources_pop();
     }
 
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
+
+    _ogx_gpu_resources_push();
     should_draw = _ogx_setup_render_stages();
     _ogx_apply_state();
     /* When not building a display list, we can optimize the drawing by
@@ -2449,6 +2459,8 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
                               glparamstate.cs.normal_enabled, color_provide, texen);
         glparamstate.draw_count++;
     }
+
+    _ogx_gpu_resources_pop();
 }
 
 static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
