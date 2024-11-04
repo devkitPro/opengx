@@ -96,6 +96,14 @@ typedef struct {
 typedef struct {
     Mtx matrix[MAX_TEXTURE_MAT_STACK];
     int glcurtex;
+    float texture_eye_plane_s[4];
+    float texture_eye_plane_t[4];
+    float texture_object_plane_s[4];
+    float texture_object_plane_t[4];
+    /* There should be 4 of these (for S, T, R, Q) but GX uses a single
+     * transformation for all of them */
+    uint16_t gen_mode;
+    OgxTexgenMask gen_enabled;
     char matrix_index;
     GLenum mode;
     GLenum combine_rgb;
@@ -114,10 +122,6 @@ typedef struct glparams_
     Mtx modelview_stack[MAX_MODV_STACK];
     Mtx44 projection_stack[MAX_PROJ_STACK];
     ClipPlane clip_planes[MAX_CLIP_PLANES];
-    float texture_eye_plane_s[4];
-    float texture_eye_plane_t[4];
-    float texture_object_plane_s[4];
-    float texture_object_plane_t[4];
     float raster_pos[4];
     float pixel_zoom_x;
     float pixel_zoom_y;
@@ -138,10 +142,6 @@ typedef struct glparams_
     char active_texture;
     uint8_t alpha_func, alpha_ref, alphatest_enabled;
     uint8_t clip_plane_mask;
-    /* There should be 4 of these (for S, T, R, Q) but GX uses a single
-     * transformation for all of them */
-    uint16_t texture_gen_mode;
-    OgxTexgenMask texture_gen_enabled;
     GLenum glcullmode;
     GLenum render_mode;
     GLenum active_buffer; /* no separate buffers for reading and writing */
@@ -231,7 +231,6 @@ typedef struct glparams_
             unsigned dirty_material : 1;
             unsigned dirty_clip_planes : 1;
             unsigned dirty_cull : 1;
-            unsigned dirty_texture_gen : 1;
             unsigned dirty_stencil : 1;
         } bits;
         unsigned int all;

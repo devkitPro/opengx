@@ -91,13 +91,13 @@ GLboolean glIsEnabled(GLenum cap)
     case GL_TEXTURE_2D:
         return glparamstate.texture_enabled & (1 << glparamstate.active_texture);
     case GL_TEXTURE_GEN_S:
-        return glparamstate.texture_gen_enabled & OGX_TEXGEN_S;
     case GL_TEXTURE_GEN_T:
-        return glparamstate.texture_gen_enabled & OGX_TEXGEN_T;
     case GL_TEXTURE_GEN_R:
-        return glparamstate.texture_gen_enabled & OGX_TEXGEN_R;
     case GL_TEXTURE_GEN_Q:
-        return glparamstate.texture_gen_enabled & OGX_TEXGEN_Q;
+        {
+            OgxTextureUnit *tu = active_tex_unit();
+            return tu->gen_enabled & (1 << (cap - GL_TEXTURE_GEN_S));
+        }
     default:
         return 0;
     }

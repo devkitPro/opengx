@@ -249,14 +249,15 @@ void ogx_initialize()
 
         tu->matrix_index = 0;
         guMtxIdentity(tu->matrix[0]);
+
+        tu->gen_mode = GL_EYE_LINEAR;
+        tu->gen_enabled = 0;
+        /* All the other plane elements should be set to 0.0f */
+        tu->texture_eye_plane_s[0] = 1.0f;
+        tu->texture_eye_plane_t[1] = 1.0f;
+        tu->texture_object_plane_s[0] = 1.0f;
+        tu->texture_object_plane_t[1] = 1.0f;
     }
-    glparamstate.texture_gen_mode = GL_EYE_LINEAR;
-    glparamstate.texture_gen_enabled = 0;
-    /* All the other plane elements should be set to 0.0f */
-    glparamstate.texture_eye_plane_s[0] = 1.0f;
-    glparamstate.texture_eye_plane_t[1] = 1.0f;
-    glparamstate.texture_object_plane_s[0] = 1.0f;
-    glparamstate.texture_object_plane_t[1] = 1.0f;
     glparamstate.active_texture = 0;
 
     glparamstate.cur_proj_mat = -1;
@@ -534,20 +535,13 @@ void glEnable(GLenum cap)
         glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
         break;
     case GL_TEXTURE_GEN_S:
-        glparamstate.texture_gen_enabled |= OGX_TEXGEN_S;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_T:
-        glparamstate.texture_gen_enabled |= OGX_TEXGEN_T;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_R:
-        glparamstate.texture_gen_enabled |= OGX_TEXGEN_R;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_Q:
-        glparamstate.texture_gen_enabled |= OGX_TEXGEN_Q;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
+        {
+            OgxTextureUnit *tu = active_tex_unit();
+            tu->gen_enabled |= (1 << (cap - GL_TEXTURE_GEN_S));
+        }
         break;
     case GL_COLOR_MATERIAL:
         glparamstate.lighting.color_material_enabled = 1;
@@ -611,20 +605,13 @@ void glDisable(GLenum cap)
         glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
         break;
     case GL_TEXTURE_GEN_S:
-        glparamstate.texture_gen_enabled &= ~OGX_TEXGEN_S;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_T:
-        glparamstate.texture_gen_enabled &= ~OGX_TEXGEN_T;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_R:
-        glparamstate.texture_gen_enabled &= ~OGX_TEXGEN_R;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
-        break;
     case GL_TEXTURE_GEN_Q:
-        glparamstate.texture_gen_enabled &= ~OGX_TEXGEN_Q;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
+        {
+            OgxTextureUnit *tu = active_tex_unit();
+            tu->gen_enabled &= ~(1 << (cap - GL_TEXTURE_GEN_S));
+        }
         break;
     case GL_COLOR_MATERIAL:
         glparamstate.lighting.color_material_enabled = 0;
@@ -1363,7 +1350,6 @@ void glClear(GLbitfield mask)
     glparamstate.dirty.bits.dirty_color_update = 1;
     glparamstate.dirty.bits.dirty_matrices = 1;
     glparamstate.dirty.bits.dirty_cull = 1;
-    glparamstate.dirty.bits.dirty_texture_gen = 1;
 
     glparamstate.draw_count++;
 }

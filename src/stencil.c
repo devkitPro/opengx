@@ -397,7 +397,6 @@ static bool setup_tev_full(int *stages, int *tex_coords,
     }
 
     GX_SetTexCoordGen(tex_coord, matrix_type, GX_TG_POS, tex_mtx);
-    glparamstate.dirty.bits.dirty_texture_gen = 1;
 
     GX_LoadTexObj(&s_stencil_texture, tex_map);
     ++(*stages);
@@ -549,8 +548,6 @@ void _ogx_stencil_draw(OgxStencilDrawCallback callback, void *cb_data)
                 check_stencil, invert_stencil, check_z, invert_z,
                 callback, cb_data);
     }
-
-    glparamstate.dirty.bits.dirty_texture_gen = 1;
 }
 
 void _ogx_stencil_enabled()

@@ -201,35 +201,36 @@ void glTexGeni(GLenum coord, GLenum pname, GLint param)
      * will use the same parameters. */
     if (coord != GL_S) return;
 
+    OgxTextureUnit *tu = active_tex_unit();
+
     switch (pname) {
     case GL_TEXTURE_GEN_MODE:
-        glparamstate.texture_gen_mode = param;
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
+        tu->gen_mode = param;
         break;
     }
 }
 
 void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
 {
+    OgxTextureUnit *tu = active_tex_unit();
+
     switch (pname) {
     case GL_TEXTURE_GEN_MODE:
         glTexGeni(coord, pname, params[0]);
         break;
     case GL_EYE_PLANE:
         if (coord == GL_S) {
-            floatcpy(glparamstate.texture_eye_plane_s, params, 4);
+            floatcpy(tu->texture_eye_plane_s, params, 4);
         } else if (coord == GL_T) {
-            floatcpy(glparamstate.texture_eye_plane_t, params, 4);
+            floatcpy(tu->texture_eye_plane_t, params, 4);
         }
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
         break;
     case GL_OBJECT_PLANE:
         if (coord == GL_S) {
-            floatcpy(glparamstate.texture_object_plane_s, params, 4);
+            floatcpy(tu->texture_object_plane_s, params, 4);
         } else if (coord == GL_T) {
-            floatcpy(glparamstate.texture_object_plane_t, params, 4);
+            floatcpy(tu->texture_object_plane_t, params, 4);
         }
-        glparamstate.dirty.bits.dirty_texture_gen = 1;
         break;
     }
 }

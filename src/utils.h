@@ -253,7 +253,7 @@ static inline int read_index(const GLvoid *indices, GLenum type, int i)
     }
 }
 
-static inline void set_gx_mtx_rowv(int row, Mtx m, float *values)
+static inline void set_gx_mtx_rowv(int row, Mtx m, const float *values)
 {
     m[row][0] = values[0];
     m[row][1] = values[1];

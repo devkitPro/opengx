@@ -32,8 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "debug.h"
 #include "utils.h"
 
-/* TODO: all the texture generation data is also unit-specific */
-static void setup_texture_gen(int *tex_mtxs)
+static void setup_texture_gen(const OgxTextureUnit *tu, int *tex_mtxs)
 {
     Mtx m;
 
@@ -42,12 +41,12 @@ static void setup_texture_gen(int *tex_mtxs)
      * that both share the same generation mode. */
     u32 input_type = GX_TG_TEX0;
     u32 matrix_src = GX_IDENTITY;
-    switch (glparamstate.texture_gen_mode) {
+    switch (tu->gen_mode) {
     case GL_OBJECT_LINEAR:
         input_type = GX_TG_POS;
         matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
-        set_gx_mtx_rowv(0, m, glparamstate.texture_object_plane_s);
-        set_gx_mtx_rowv(1, m, glparamstate.texture_object_plane_t);
+        set_gx_mtx_rowv(0, m, tu->texture_object_plane_s);
+        set_gx_mtx_rowv(1, m, tu->texture_object_plane_t);
         set_gx_mtx_row(2, m, 0.0f, 0.0f, 1.0f, 0.0f);
         GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
         ++(*tex_mtxs);
@@ -56,8 +55,8 @@ static void setup_texture_gen(int *tex_mtxs)
         input_type = GX_TG_POS;
         matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
         Mtx eye_plane;
-        set_gx_mtx_rowv(0, eye_plane, glparamstate.texture_eye_plane_s);
-        set_gx_mtx_rowv(1, eye_plane, glparamstate.texture_eye_plane_t);
+        set_gx_mtx_rowv(0, eye_plane, tu->texture_eye_plane_s);
+        set_gx_mtx_rowv(1, eye_plane, tu->texture_eye_plane_t);
         set_gx_mtx_row(2, eye_plane, 0.0f, 0.0f, 1.0f, 0.0f);
         guMtxConcat(eye_plane, glparamstate.modelview_matrix, m);
         GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
@@ -65,7 +64,7 @@ static void setup_texture_gen(int *tex_mtxs)
         break;
     default:
         warning("Unsupported texture coordinate generation mode %x",
-                glparamstate.texture_gen_mode);
+                tu->gen_mode);
     }
 
     GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, input_type, matrix_src);
@@ -437,8 +436,8 @@ void _ogx_setup_texture_stages(int *stages, int *tex_coords,
         OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
         setup_texture_stage(tu, stage, tex_coord, tex_map,
                             raster_color, raster_alpha, channel);
-        if (glparamstate.texture_gen_enabled) {
-            setup_texture_gen(tex_mtxs);
+        if (tu->gen_enabled) {
+            setup_texture_gen(tu, tex_mtxs);
         } else {
             setup_texture_stage_matrix(tu, tex_coord, tex_map, tex_mtxs);
         }

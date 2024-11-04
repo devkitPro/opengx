@@ -110,7 +110,6 @@ static bool setup_tev(int *stages, int *tex_coords, int tex_maps, int *tex_mtxs,
     GX_LoadTexMtxImm(m, tex_mtx, GX_MTX2x4);
 
     GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, GX_TG_POS, tex_mtx);
-    glparamstate.dirty.bits.dirty_texture_gen = 1;
 
     ++(*stages);
     ++(*tex_coords);
