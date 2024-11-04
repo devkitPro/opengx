@@ -37,11 +37,6 @@ static void setup_texture_gen(int *tex_mtxs)
 {
     Mtx m;
 
-    if (!glparamstate.texture_gen_enabled) {
-        GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
-        return;
-    }
-
     /* The GX API does not allow setting different inputs and generation modes
      * for the S and T coordinates; so, if one of them is enabled, we assume
      * that both share the same generation mode. */
@@ -369,7 +364,7 @@ static void setup_combine_operation(const OgxTextureUnit *te,
 static void setup_texture_stage(const OgxTextureUnit *tu,
                                 u8 stage, u8 tex_coord, u8 tex_map,
                                 u8 raster_color, u8 raster_alpha,
-                                u8 channel, int *tex_mtxs)
+                                u8 channel)
 {
     switch (tu->mode) {
     case GL_REPLACE:
@@ -409,10 +404,21 @@ static void setup_texture_stage(const OgxTextureUnit *tu,
     }
     GX_SetTevOrder(stage, tex_coord, tex_map, channel);
     GX_LoadTexObj(&texture_list[tu->glcurtex].texobj, tex_map);
-    if (glparamstate.dirty.bits.dirty_texture_gen) {
-        setup_texture_gen(tex_mtxs);
-        glparamstate.dirty.bits.dirty_texture_gen = 0;
-    }
+}
+
+static void setup_texture_stage_matrix(const OgxTextureUnit *tu,
+                                       u8 tex_coord, u8 tex_map,
+                                       int *tex_mtxs)
+{
+    u32 input_type = GX_TG_TEX0 + tex_coord; /* TODO: this is not correct,
+                                                we need to match the
+                                                coordinate index sent along
+                                                in the GX vertex array */
+    u32 matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
+    Mtx *matrix = (Mtx *)&tu->matrix[tu->matrix_index];
+    GX_LoadTexMtxImm(*matrix, matrix_src, GX_MTX3x4);
+    GX_SetTexCoordGen(tex_coord, GX_TG_MTX3x4, input_type, matrix_src);
+    ++(*tex_mtxs);
 }
 
 void _ogx_setup_texture_stages(int *stages, int *tex_coords,
@@ -430,7 +436,12 @@ void _ogx_setup_texture_stages(int *stages, int *tex_coords,
 
         OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
         setup_texture_stage(tu, stage, tex_coord, tex_map,
-                            raster_color, raster_alpha, channel, tex_mtxs);
+                            raster_color, raster_alpha, channel);
+        if (glparamstate.texture_gen_enabled) {
+            setup_texture_gen(tex_mtxs);
+        } else {
+            setup_texture_stage_matrix(tu, tex_coord, tex_map, tex_mtxs);
+        }
         stage++;
         tex_coord++;
         tex_map++;
