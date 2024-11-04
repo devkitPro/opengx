@@ -32,14 +32,16 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "debug.h"
 #include "utils.h"
 
-static void setup_texture_gen(const OgxTextureUnit *tu, int *tex_mtxs)
+static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
+                              u8 texture_matrix, u8 matrix_input,
+                              int *tex_mtxs)
 {
     Mtx m;
 
     /* The GX API does not allow setting different inputs and generation modes
      * for the S and T coordinates; so, if one of them is enabled, we assume
      * that both share the same generation mode. */
-    u32 input_type = GX_TG_TEX0;
+    u32 input_type = matrix_input;
     u32 matrix_src = GX_IDENTITY;
     switch (tu->gen_mode) {
     case GL_OBJECT_LINEAR:
@@ -67,7 +69,8 @@ static void setup_texture_gen(const OgxTextureUnit *tu, int *tex_mtxs)
                 tu->gen_mode);
     }
 
-    GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, input_type, matrix_src);
+    GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, input_type, matrix_src,
+                       FALSE, texture_matrix);
 }
 
 typedef struct {
@@ -406,18 +409,16 @@ static void setup_texture_stage(const OgxTextureUnit *tu,
 }
 
 static void setup_texture_stage_matrix(const OgxTextureUnit *tu,
-                                       u8 tex_coord, u8 tex_map,
-                                       int *tex_mtxs)
+                                       u8 dtt_matrix)
 {
-    u32 input_type = GX_TG_TEX0 + tex_coord; /* TODO: this is not correct,
-                                                we need to match the
-                                                coordinate index sent along
-                                                in the GX vertex array */
-    u32 matrix_src = GX_TEXMTX0 + *tex_mtxs * 3;
-    Mtx *matrix = (Mtx *)&tu->matrix[tu->matrix_index];
-    GX_LoadTexMtxImm(*matrix, matrix_src, GX_MTX2x4);
-    GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, input_type, matrix_src);
-    ++(*tex_mtxs);
+    Mtx m;
+    /* Post-transform matrices are always 4x3, but we don't want any
+     * transformation on the third coordinate, hence use an identity-like third
+     * row. */
+    memcpy(m, tu->matrix[tu->matrix_index], 8 * sizeof(float));
+    m[2][0] = m[2][1] = m[2][3] = 0.0f;
+    m[2][2] = 1.0f;
+    GX_LoadTexMtxImm(m, dtt_matrix, GX_MTX3x4);
 }
 
 void _ogx_setup_texture_stages(int *stages, int *tex_coords,
@@ -429,6 +430,8 @@ void _ogx_setup_texture_stages(int *stages, int *tex_coords,
     u8 tex_coord = GX_TEXCOORD0 + *tex_coords;
     u8 tex_map = GX_TEXMAP0 + *tex_maps;
     u8 tex_mtx = GX_TEXMTX0 + *tex_mtxs * 3;
+    u8 dtt_matrix = GX_DTTMTX0 + *tex_mtxs * 3; // post-processing tex matrix
+    u8 matrix_input = GX_TG_TEX0 + *tex_coords;
 
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (!(glparamstate.texture_enabled & (1 << tex))) continue;
@@ -436,14 +439,20 @@ void _ogx_setup_texture_stages(int *stages, int *tex_coords,
         OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
         setup_texture_stage(tu, stage, tex_coord, tex_map,
                             raster_color, raster_alpha, channel);
+
+        setup_texture_stage_matrix(tu, dtt_matrix);
         if (tu->gen_enabled) {
-            setup_texture_gen(tu, tex_mtxs);
+            setup_texture_gen(tu, tex_coord, dtt_matrix, matrix_input,
+                              tex_mtxs);
         } else {
-            setup_texture_stage_matrix(tu, tex_coord, tex_map, tex_mtxs);
+            GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, matrix_input,
+                               GX_IDENTITY, FALSE, dtt_matrix);
         }
         stage++;
         tex_coord++;
         tex_map++;
+        dtt_matrix += 3;
+        matrix_input++;
         raster_color = GX_CC_CPREV;
         raster_alpha = GX_CA_APREV;
     }
