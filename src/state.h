@@ -49,6 +49,7 @@ extern "C" {
 #define _MAX_GL_TEX    2048 // Maximum number of textures
 #define MAX_PROJ_STACK 4   // Proj. matrix stack depth
 #define MAX_MODV_STACK 16  // Modelview matrix stack depth
+#define MAX_TEXTURE_MAT_STACK 2 // Matrix stack, 2 is the required minimum
 #define NUM_VERTS_IM   64  // Maximum number of vertices that can be inside a glBegin/End
 #define MAX_LIGHTS     4   // Max num lights
 #define MAX_GX_LIGHTS  8
@@ -91,6 +92,20 @@ typedef struct {
     uint8_t sizes[10];
     OgxPixelMap maps[10];
 } OgxPixelMapTables;
+
+typedef struct {
+    Mtx matrix[MAX_TEXTURE_MAT_STACK];
+    int glcurtex;
+    char matrix_index;
+    GLenum mode;
+    GLenum combine_rgb;
+    GLenum source_rgb[3];
+    GLenum operand_rgb[3];
+    GLenum combine_alpha;
+    GLenum source_alpha[3];
+    GLenum operand_alpha[3];
+    GXColor color; // TODO: still unused
+} OgxTextureUnit;
 
 typedef struct glparams_
 {
@@ -142,17 +157,7 @@ typedef struct glparams_
     int16_t transfer_index_shift;
     int16_t transfer_index_offset;
 
-    struct TextureUnit {
-        int glcurtex;
-        GLenum mode;
-        GLenum combine_rgb;
-        GLenum source_rgb[3];
-        GLenum operand_rgb[3];
-        GLenum combine_alpha;
-        GLenum source_alpha[3];
-        GLenum operand_alpha[3];
-        GXColor color; // TODO: still unused
-    } texture_unit[MAX_TEXTURE_UNITS];
+    OgxTextureUnit texture_unit[MAX_TEXTURE_UNITS];
 
     OgxPixelMapTables *pixel_maps; /* Only allocated if glPixelMap is called */
 
@@ -301,8 +306,6 @@ typedef struct glparams_
 
     GLenum error;
 } glparams_;
-
-typedef struct TextureUnit OgxTextureUnit;
 
 extern glparams_ _ogx_state;
 

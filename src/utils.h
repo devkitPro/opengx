@@ -131,6 +131,13 @@ static inline void mtx44project(const Mtx44 p, const guVector *v,
     }
 }
 
+static inline Mtx *current_tex_matrix()
+{
+    int unit = glparamstate.active_texture;
+    OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+    return &tu->matrix[tu->matrix_index];
+}
+
 static inline bool gxcol_equal(GXColor a, GXColor b)
 {
     return *(int32_t*)&a == *(int32_t*)&b;

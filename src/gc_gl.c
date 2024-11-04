@@ -246,6 +246,9 @@ void ogx_initialize()
         // This is not a mistake, op 2 RGB is also SRC_ALPHA!
         tu->operand_rgb[2] = tu->operand_alpha[2] = GL_SRC_ALPHA;
         tu->color.r = tu->color.g = tu->color.b = tu->color.a = 0;
+
+        tu->matrix_index = 0;
+        guMtxIdentity(tu->matrix[0]);
     }
     glparamstate.texture_gen_mode = GL_EYE_LINEAR;
     glparamstate.texture_gen_enabled = 0;
@@ -992,6 +995,9 @@ void glMatrixMode(GLenum mode)
     case GL_PROJECTION:
         glparamstate.matrixmode = 0;
         break;
+    case GL_TEXTURE:
+        glparamstate.matrixmode = 2;
+        break;
     default:
         glparamstate.matrixmode = -1;
         break;
@@ -1016,11 +1022,22 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
+    case 2:
+        {
+            int unit = glparamstate.active_texture;
+            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            if (tu->matrix_index <= 0) {
+                set_error(GL_STACK_UNDERFLOW);
+                return;
+            }
+            tu->matrix_index--;
+        }
     default:
         break;
     }
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
+
 void glPushMatrix(void)
 {
     HANDLE_CALL_LIST(PUSH_MATRIX);
@@ -1042,10 +1059,21 @@ void glPushMatrix(void)
         glparamstate.cur_modv_mat++;
         memcpy(glparamstate.modelview_stack[glparamstate.cur_modv_mat], glparamstate.modelview_matrix, sizeof(Mtx));
         break;
+    case 2:
+        {
+            int unit = glparamstate.active_texture;
+            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            if (tu->matrix_index >= MAX_TEXTURE_MAT_STACK - 1) {
+                set_error(GL_STACK_OVERFLOW);
+                return;
+            }
+            tu->matrix_index++;
+        }
     default:
         break;
     }
 }
+
 void glLoadMatrixf(const GLfloat *m)
 {
     switch (glparamstate.matrixmode) {
@@ -1054,6 +1082,13 @@ void glLoadMatrixf(const GLfloat *m)
         break;
     case 1:
         gl_matrix_to_gx(m, glparamstate.modelview_matrix);
+        break;
+    case 2:
+        {
+            int unit = glparamstate.active_texture;
+            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            gl_matrix_to_gx(m, tu->matrix[tu->matrix_index]);
+        }
         break;
     default:
         return;
@@ -1074,6 +1109,8 @@ void glMultMatrixf(const GLfloat *m)
 {
     HANDLE_CALL_LIST(MULT_MATRIX, m);
 
+    Mtx *target = NULL;
+
     switch (glparamstate.matrixmode) {
     case 0:
         Mtx44 mtx44;
@@ -1082,16 +1119,22 @@ void glMultMatrixf(const GLfloat *m)
                       glparamstate.projection_matrix);
         break;
     case 1:
-        Mtx mtx;
-        gl_matrix_to_gx(m, mtx);
-        guMtxConcat(glparamstate.modelview_matrix, mtx,
-                    glparamstate.modelview_matrix);
+        target = &glparamstate.modelview_matrix;
+        break;
+    case 2:
+        target = current_tex_matrix();
         break;
     default:
         break;
     }
+    if (target) {
+        Mtx mtx;
+        gl_matrix_to_gx(m, mtx);
+        guMtxConcat(*target, mtx, *target);
+    }
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
+
 void glLoadIdentity()
 {
     HANDLE_CALL_LIST(LOAD_IDENTITY);
@@ -1103,15 +1146,25 @@ void glLoadIdentity()
     case 1:
         guMtxIdentity(glparamstate.modelview_matrix);
         break;
+    case 2:
+        {
+            int unit = glparamstate.active_texture;
+            OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+            guMtxIdentity(tu->matrix[tu->matrix_index]);
+        }
+        break;
     default:
         return;
     }
 
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
+
 void glScalef(GLfloat x, GLfloat y, GLfloat z)
 {
     HANDLE_CALL_LIST(SCALE, x, y, z);
+
+    Mtx *target = NULL;
 
     switch (glparamstate.matrixmode) {
     case 0:
@@ -1120,14 +1173,18 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
                         x, y, z);
         break;
     case 1:
-        guMtxApplyScale(glparamstate.modelview_matrix,
-                        glparamstate.modelview_matrix,
-                        x, y, z);
+        target = &glparamstate.modelview_matrix;
+        break;
+    case 2:
+        target = current_tex_matrix();
         break;
     default:
         break;
     }
 
+    if (target) {
+        guMtxApplyScale(*target, *target, x, y, z);
+    }
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
@@ -1140,6 +1197,8 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
 {
     HANDLE_CALL_LIST(TRANSLATE, x, y, z);
 
+    Mtx *target = NULL;
+
     switch (glparamstate.matrixmode) {
     case 0:
         guMtxApplyTrans(glparamstate.projection_matrix,
@@ -1147,20 +1206,26 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
                         x, y, z);
         break;
     case 1:
-        guMtxApplyTrans(glparamstate.modelview_matrix,
-                        glparamstate.modelview_matrix,
-                        x, y, z);
+        target = &glparamstate.modelview_matrix;
+        break;
+    case 2:
+        target = current_tex_matrix();
         break;
     default:
         break;
     }
 
+    if (target) {
+        guMtxApplyTrans(*target, *target, x, y, z);
+    }
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
+
 void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
 {
     HANDLE_CALL_LIST(ROTATE, angle, x, y, z);
 
+    Mtx *target = NULL;
     Mtx44 rot;
     guVector axis = { x, y, z };
     guMtxRotAxisDeg(rot, &axis, angle);
@@ -1172,12 +1237,18 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         guMtx44Concat(glparamstate.projection_matrix, rot, glparamstate.projection_matrix);
         break;
     case 1:
-        guMtxConcat(glparamstate.modelview_matrix, rot, glparamstate.modelview_matrix);
+        target = &glparamstate.modelview_matrix;
+        break;
+    case 2:
+        target = current_tex_matrix();
         break;
     default:
         break;
     }
 
+    if (target) {
+        guMtxConcat(*target, rot, *target);
+    }
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
