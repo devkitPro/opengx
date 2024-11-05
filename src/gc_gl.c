@@ -93,8 +93,8 @@ static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
 
 static inline void update_modelview_matrix()
 {
-    GX_LoadPosMtxImm(glparamstate.modelview_matrix, GX_PNMTX3);
-    GX_SetCurrentMtx(GX_PNMTX3);
+    GX_LoadPosMtxImm(glparamstate.modelview_matrix, GX_PNMTX0);
+    GX_SetCurrentMtx(GX_PNMTX0);
 }
 
 /* Deduce the projection type (perspective vs orthogonal) and the values of the
@@ -155,7 +155,7 @@ static inline void update_normal_matrix()
     Mtx mvinverse, normalm;
     guMtxInverse(glparamstate.modelview_matrix, mvinverse);
     guMtxTranspose(mvinverse, normalm);
-    GX_LoadNrmMtxImm(normalm, GX_PNMTX3);
+    GX_LoadNrmMtxImm(normalm, GX_PNMTX0);
 }
 
 static void setup_cull_mode()
@@ -450,9 +450,9 @@ void _ogx_setup_2D_projection()
 
 void _ogx_setup_3D_projection()
 {
-    /* Assume that the modelview matrix has already been updated to GX_PNMTX3
+    /* Assume that the modelview matrix has already been updated to GX_PNMTX0
      */
-    GX_SetCurrentMtx(GX_PNMTX3);
+    GX_SetCurrentMtx(GX_PNMTX0);
     update_projection_matrix();
 }
 
