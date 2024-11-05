@@ -459,11 +459,11 @@ static bool draw_op(uint16_t op,
     glparamstate.dirty.bits.dirty_color_update = 1;
 
     u8 stage = GX_TEVSTAGE0;
-    GX_SetTevColor(GX_TEVREG0, drawColor);
+    GX_SetTevColor(GX_TEVPREV, drawColor);
     GX_SetTevOrder(stage, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, GX_COLOR0A0);
     /* Pass the constant color */
-    GX_SetTevColorIn(stage, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_C0);
-    GX_SetTevAlphaIn(stage, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_A0);
+    GX_SetTevColorIn(stage, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
+    GX_SetTevAlphaIn(stage, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_APREV);
     GX_SetTevColorOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1,
                      GX_TRUE, GX_TEVPREV);
     GX_SetTevAlphaOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1,
