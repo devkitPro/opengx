@@ -44,6 +44,7 @@ int _ogx_functions_c = 0; /* referenced by gc_gl.c, see the comment in there */
 #define PROC(name) { #name, name }
 static const ProcMap s_proc_map[] = {
     PROC(glAccum),
+    PROC(glActiveTexture), /* OpenGL 1.3 */
     PROC(glAlphaFunc),
     //PROC(glAreTexturesResident),
     PROC(glArrayElement),
@@ -64,6 +65,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glClearDepth),
     //PROC(glClearIndex),
     PROC(glClearStencil),
+    PROC(glClientActiveTexture), /* OpenGL 1.3 */
     PROC(glClipPlane),
     PROC(glColor3b),
     PROC(glColor3bv),
@@ -239,6 +241,38 @@ static const ProcMap s_proc_map[] = {
     PROC(glMatrixMode),
     PROC(glMultMatrixd),
     PROC(glMultMatrixf),
+    PROC(glMultiTexCoord1d), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1dv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1f), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1fv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1i), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1iv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1s), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord1sv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2d), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2dv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2f), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2fv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2i), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2iv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2s), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord2sv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3d), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3dv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3f), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3fv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3i), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3iv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3s), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord3sv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4d), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4dv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4f), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4fv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4i), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4iv), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4s), /* OpenGL 1.3 */
+    PROC(glMultiTexCoord4sv), /* OpenGL 1.3 */
     PROC(glNewList),
     PROC(glNormal3b),
     PROC(glNormal3bv),
@@ -355,7 +389,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glTexEnvf),
     PROC(glTexEnvfv),
     PROC(glTexEnvi),
-    //PROC(glTexEnviv),
+    PROC(glTexEnviv),
     //PROC(glTexGend),
     //PROC(glTexGendv),
     //PROC(glTexGenf),
