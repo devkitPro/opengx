@@ -228,7 +228,7 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         }
     }
 
-    GX_ClearVtxDesc();
+    _ogx_array_reader_setup_draw_start();
     _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
     if (dg->cs.normal_enabled) {
         _ogx_array_reader_setup_draw(&glparamstate.normal_array);

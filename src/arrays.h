@@ -48,6 +48,7 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
                             const void *data,
                             int num_components, GLenum type, int stride);
+void _ogx_array_reader_setup_draw_start();
 void _ogx_array_reader_setup_draw(OgxArrayReader *reader);
 void _ogx_array_reader_setup_draw_color(OgxArrayReader *reader,
                                         bool dup_color);

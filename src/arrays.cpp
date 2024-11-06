@@ -38,6 +38,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <ogc/gx.h>
 #include <variant>
 
+static char s_num_tex_arrays = 0;
+
 struct GxVertexFormat {
     uint8_t attribute;
     char num_components;
@@ -137,9 +139,11 @@ struct VertexReaderBase {
         stride(stride), dup_color(false), vbo(vbo) {}
 
     virtual void setup_draw() {
-        /* TODO: The texture coordinates must be enabled sequentially, so we
-         * should adjust format.attribute and to count how many texture units
-         * have been enabled before the current one. */
+        if (format.attribute >= GX_VA_TEX0 &&
+            format.attribute <= GX_VA_TEX7) {
+            /* Texture coordinates must be enable sequentially */
+            format.attribute = GX_VA_TEX0 + s_num_tex_arrays++;
+        }
         GX_SetVtxDesc(format.attribute, GX_DIRECT);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
                          format.type, format.size, 0);
@@ -425,6 +429,12 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
 
     warning("Unknown array data type %x for attribute %d\n",
             type, vertex_attribute);
+}
+
+void _ogx_array_reader_setup_draw_start()
+{
+    GX_ClearVtxDesc();
+    s_num_tex_arrays = 0;
 }
 
 void _ogx_array_reader_setup_draw(OgxArrayReader *reader)

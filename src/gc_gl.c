@@ -2273,8 +2273,7 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
                                   const GLvoid *indices,
                                   int ne, int color_provide, int texen)
 {
-    // Not using indices
-    GX_ClearVtxDesc();
+    _ogx_array_reader_setup_draw_start();
     _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
     if (ne)
         _ogx_array_reader_setup_draw(&glparamstate.normal_array);
@@ -2455,8 +2454,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
 static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
                                 int color_provide, int texen)
 {
-    // Not using indices
-    GX_ClearVtxDesc();
+    _ogx_array_reader_setup_draw_start();
     _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
     if (ne)
         _ogx_array_reader_setup_draw(&glparamstate.normal_array);
