@@ -1546,7 +1546,10 @@ void glDisableClientState(GLenum cap)
         glparamstate.cs.normal_enabled = 0;
         break;
     case GL_TEXTURE_COORD_ARRAY:
-        glparamstate.cs.texcoord_enabled = 0;
+        {
+            int unit = glparamstate.cs.active_texture;
+            glparamstate.cs.texcoord_enabled &= ~(1 << unit);
+        }
         break;
     case GL_VERTEX_ARRAY:
         glparamstate.cs.vertex_enabled = 0;
@@ -1570,7 +1573,10 @@ void glEnableClientState(GLenum cap)
         glparamstate.cs.normal_enabled = 1;
         break;
     case GL_TEXTURE_COORD_ARRAY:
-        glparamstate.cs.texcoord_enabled = 1;
+        {
+            int unit = glparamstate.cs.active_texture;
+            glparamstate.cs.texcoord_enabled |= (1 << unit);
+        }
         break;
     case GL_VERTEX_ARRAY:
         glparamstate.cs.vertex_enabled = 1;
