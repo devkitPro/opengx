@@ -204,6 +204,7 @@ void glGetIntegerv(GLenum pname, GLint *params)
         return;
     case GL_MAX_TEXTURE_COORDS:
     case GL_MAX_TEXTURE_IMAGE_UNITS:
+    case GL_MAX_TEXTURE_UNITS:
         *params = MAX_TEXTURE_UNITS;
         break;
     case GL_MAX_TEXTURE_SIZE:
