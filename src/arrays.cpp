@@ -180,6 +180,11 @@ struct DirectVboReader: public VertexReaderBase {
     }
 
     void setup_draw() override {
+        if (format.attribute >= GX_VA_TEX0 &&
+            format.attribute <= GX_VA_TEX7) {
+            /* Texture coordinates must be enable sequentially */
+            format.attribute = GX_VA_TEX0 + s_num_tex_arrays++;
+        }
         GX_SetArray(format.attribute, const_cast<char*>(data), stride);
         GX_SetVtxDesc(format.attribute, GX_INDEX16);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
