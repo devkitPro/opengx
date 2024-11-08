@@ -58,7 +58,7 @@ const GLubyte *glGetString(GLenum name)
         return "1.1";
     case GL_EXTENSIONS:
         return
-            "GL_ARB_multitexture"
+            "GL_ARB_multitexture "
             "GL_ARB_vertex_buffer_object ";
     default:
         set_error(GL_INVALID_ENUM);
