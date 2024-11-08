@@ -79,6 +79,9 @@ struct PixelStreamBase {
     virtual void write(GXColor color) = 0;
     virtual void setup() {}
 
+    void *operator new(size_t size) { return malloc(size); }
+    void operator delete(void * p) { free(p); }
+
 protected:
     void *m_data;
     int m_width;

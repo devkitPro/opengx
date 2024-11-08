@@ -72,6 +72,9 @@ struct Texel {
         }
     }
 
+    void *operator new(size_t size) { return malloc(size); }
+    void operator delete(void * p) { free(p); }
+
     void *m_data;
     int m_x;
     int m_y;
