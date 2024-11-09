@@ -523,7 +523,7 @@ void glDeleteTextures(GLsizei n, const GLuint *textures)
     GX_DrawDone();
     while (n-- > 0) {
         int i = *texlist++;
-        if (!(i < 0 || i >= _MAX_GL_TEX)) {
+        if (i > 0 && i < _MAX_GL_TEX) {
             void *data = GX_GetTexObjData(&texture_list[i].texobj);
             if (data != 0)
                 free(MEM_PHYSICAL_TO_K0(data));
