@@ -999,6 +999,7 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.projection_matrix, glparamstate.projection_stack[glparamstate.cur_proj_mat], sizeof(Mtx44));
         glparamstate.cur_proj_mat--;
+        break;
     case 1:
         if (glparamstate.cur_modv_mat < 0) {
             set_error(GL_STACK_UNDERFLOW);
@@ -1006,6 +1007,7 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
+        break;
     case 2:
         {
             OgxTextureUnit *tu = active_tex_unit();
