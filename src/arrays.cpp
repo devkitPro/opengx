@@ -143,6 +143,8 @@ struct VertexReaderBase {
             format.attribute <= GX_VA_TEX7) {
             /* Texture coordinates must be enable sequentially */
             format.attribute = GX_VA_TEX0 + s_num_tex_arrays++;
+            /* And GX does not support more than two coordinates */
+            if (format.num_components > 2) format.num_components = 2;
         }
         GX_SetVtxDesc(format.attribute, GX_DIRECT);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
