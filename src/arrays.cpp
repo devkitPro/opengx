@@ -332,21 +332,21 @@ struct CoordVertexReader: public GenericVertexReader<T> {
     using GenericVertexReader<T>::GenericVertexReader;
 
     void process_element(int index) {
-        float x, y, z;
         const T *ptr = elemAt(index);
-        x = *ptr++;
-        y = *ptr++;
-        if (format.num_components >= 3) {
+        if (format.num_components == 4) {
+            float x, y, z, w;
+            x = *ptr++;
+            y = *ptr++;
             z = *ptr++;
-            if (format.num_components == 4) {
-                float w = *ptr++;
-                x /= w;
-                y /= w;
-                z /= w;
-            }
+            w = *ptr++;
+            x /= w;
+            y /= w;
+            z /= w;
             GX_Position3f32(x, y, z);
         } else {
-            GX_Position2f32(x, y);
+            for (int i = 0; i < format.num_components; i++, ptr++) {
+                wgPipe->F32 = float(*ptr++);
+            }
         }
     }
 };
