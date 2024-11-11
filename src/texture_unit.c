@@ -77,7 +77,8 @@ typedef struct {
                              "source" */
 } TevSource;
 
-static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand)
+static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand,
+                                    u8 prev_rgb, u8 prev_alpha)
 {
     TevSource ret = { GX_CC_ZERO, false };
     if (operand == GL_ONE_MINUS_SRC_COLOR) {
@@ -97,8 +98,8 @@ static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand)
         break;
     case GL_PREVIOUS:
         switch (operand) {
-        case GL_SRC_COLOR: ret.source = GX_CC_CPREV; break;
-        case GL_SRC_ALPHA: ret.source = GX_CC_APREV; break;
+        case GL_SRC_COLOR: ret.source = prev_rgb; break;
+        case GL_SRC_ALPHA: ret.source = prev_alpha; break;
         }
         break;
     case GL_CONSTANT: ret.source = GX_CC_KONST; break;
@@ -112,7 +113,8 @@ static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand)
     return ret;
 }
 
-static TevSource gl_alphasource_to_gx(GLenum source, GLenum operand)
+static TevSource gl_alphasource_to_gx(GLenum source, GLenum operand,
+                                      u8 prev_alpha)
 {
     TevSource ret = { GX_CA_ZERO, false };
     /* For the alpha channel, operand can only be either GL_SRC_ALPHA or
@@ -123,7 +125,7 @@ static TevSource gl_alphasource_to_gx(GLenum source, GLenum operand)
 
     switch (source) {
     case GL_TEXTURE: ret.source = GX_CA_TEXA; break;
-    case GL_PREVIOUS: ret.source = GX_CA_APREV; break;
+    case GL_PREVIOUS: ret.source = prev_alpha; break;
     case GL_CONSTANT: ret.source = GX_CA_KONST; break;
     case GL_PRIMARY_COLOR: ret.source = GX_CA_RASA; break;
     }
@@ -343,11 +345,22 @@ static void setup_combine_operation(const OgxTextureUnit *te,
     TevSource source_rgb[3];
     TevSource source_alpha[3];
 
+    u8 prev_rgb, prev_alpha;
+    if (stage == GX_TEVSTAGE0) {
+       prev_rgb = GX_CC_RASC;
+       prev_alpha = GX_CA_RASA;
+    } else {
+       prev_rgb = GX_CC_CPREV;
+       prev_alpha = GX_CA_APREV;
+    }
+
     for (int i = 0; i < 3; i++) {
         source_rgb[i] = gl_rgbsource_to_gx(te->source_rgb[i],
-                                           te->operand_rgb[i]);
+                                           te->operand_rgb[i],
+                                           prev_rgb, prev_alpha);
         source_alpha[i] = gl_alphasource_to_gx(te->source_alpha[i],
-                                               te->operand_alpha[i]);
+                                               te->operand_alpha[i],
+                                               prev_alpha);
     }
 
     TevInput rgb = compute_tev_input(te->combine_rgb, stage, te->color,
