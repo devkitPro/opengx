@@ -376,9 +376,10 @@ static void setup_texture_stage(const OgxTextureUnit *tu,
         GX_SetTevAlphaIn(stage, GX_CA_TEXA, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO);
         break;
     case GL_ADD:
-        // In data: d: Texture Color a: raster value, Operation: a+d
+        /* In data: d: Texture Color a: raster value, Operation: a+d
+         * Alpha gets multiplied. */
         GX_SetTevColorIn(stage, raster_color, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
-        GX_SetTevAlphaIn(stage, raster_alpha, GX_CA_ZERO, GX_CA_ZERO, GX_CA_TEXA);
+        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     case GL_BLEND:
         /* In data: c: Texture Color, a: raster value, b: tex env
