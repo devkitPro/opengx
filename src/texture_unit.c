@@ -148,9 +148,12 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
         B = 1,
         C = 2,
         D = 3,
+        NUM_TEV_REGS,
     };
     int used_args = 0;
 
+    const int CA_ONE = 0xa1; /* sentinel value, we won't actually store this in
+                                the TEV registers */
     u8 zero_value, one_value, konst_value;
     if (is_alpha) {
         zero_value = GX_CA_ZERO;
@@ -160,7 +163,7 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
          * careful, because this if one of the arg{0,1,2} is set to a constant,
          * we'll need to solve the conflict somehow (we can use only one
          * constant value per TEV stage). */
-        one_value = GX_CA_KONST;
+        one_value = CA_ONE;
         konst_value = GX_CA_KONST;
     } else {
         zero_value = GX_CC_ZERO;
@@ -296,12 +299,12 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
     }
 
     int used_constants = 0;
+    bool needs_constant_one = false;
     if (is_alpha) {
-        bool needs_constant_one = false;
-        for (int i = 0; i < used_args; i++) {
-            if (args[i].source == one_value) {
+        for (int i = 0; i < NUM_TEV_REGS; i++) {
+            if (reg[i] == one_value) {
                 needs_constant_one = true;
-                break;
+                reg[i] = GX_CA_KONST;
             }
         }
         if (needs_constant_one) {
@@ -320,7 +323,7 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
             /* We could support this by using more stages. TODO */
         }
         /* TODO: dynamically allocate constant register! */
-        if (is_alpha) {
+        if (is_alpha && !needs_constant_one) {
             GX_SetTevKAlphaSel(stage, GX_TEV_KASEL_K0_A);
         } else {
             GX_SetTevKColorSel(stage, GX_TEV_KCSEL_K0);
