@@ -122,6 +122,8 @@ static unsigned char gcgl_texwrap_conv(GLint param)
     case GL_MIRRORED_REPEAT:
         return GX_MIRROR;
     case GL_CLAMP:
+    case GL_CLAMP_TO_EDGE:
+    case GL_CLAMP_TO_BORDER:
         return GX_CLAMP;
     case GL_REPEAT:
     default:
