@@ -1210,6 +1210,7 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
     Mtx *target = NULL;
     Mtx44 rot;
     guVector axis = { x, y, z };
+    if (angle == 0.0f || (x == 0.0f && y == 0.0f && z == 0.0f)) return;
     guMtxRotAxisDeg(rot, &axis, angle);
 
     switch (glparamstate.matrixmode) {
