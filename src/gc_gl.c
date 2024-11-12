@@ -2042,7 +2042,7 @@ bool _ogx_setup_render_stages()
     if (glparamstate.lighting.enabled) {
         LightMasks light_mask = prepare_lighting();
 
-        GXColor color_zero = { 0, 0, 0, 0 };
+        GXColor color_black = { 0, 0, 0, 255 };
         GXColor color_gamb = gxcol_new_fv(glparamstate.lighting.globalambient);
 
         _ogx_gpu_resources->tevstage_first += 2;
@@ -2110,9 +2110,9 @@ bool _ogx_setup_render_stages()
                        light_mask.ambient_mask | light_mask.specular_mask , GX_DF_NONE, GX_AF_SPEC);
         GX_SetChanAmbColor(GX_COLOR0A0, color_gamb);
 
-        // Color1 channel: Multiplies the light raster result with the vertex color. Ambient is set to register (which is zero)
+        // Color1 channel: Multiplies the light raster result with the vertex color. Ambient is set to register (which is black)
         GX_SetChanCtrl(GX_COLOR1A1, GX_TRUE, GX_SRC_REG, vert_color_src, light_mask.diffuse_mask, GX_DF_CLAMP, GX_AF_SPOT);
-        GX_SetChanAmbColor(GX_COLOR1A1, color_zero);
+        GX_SetChanAmbColor(GX_COLOR1A1, color_black);
 
         // STAGE 0: ambient*vert_color -> cprev
         // In data: d: Raster Color, a: emission color
@@ -2128,7 +2128,7 @@ bool _ogx_setup_render_stages()
         // STAGE 1: diffuse*vert_color + cprev -> cprev
         // In data: d: Raster Color a: CPREV
         GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_CPREV, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
-        GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_APREV, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
+        GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_RASA, GX_CA_ZERO);
         // Operation: Sum a + d
         GX_SetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
         GX_SetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
