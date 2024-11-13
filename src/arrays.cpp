@@ -39,6 +39,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <variant>
 
 static char s_num_tex_arrays = 0;
+static bool s_has_normals = false;
+static uint8_t s_num_colors = 0;
+static uint8_t s_tex_unit_mask = 0;
 
 struct GxVertexFormat {
     uint8_t attribute;
@@ -462,6 +465,32 @@ void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             if (tex_unit_mask & (1 << i)) {
                 get_reader(&glparamstate.texcoord_array[i])->setup_draw();
+            }
+        }
+    }
+
+    s_has_normals = has_normals;
+    s_num_colors = num_colors;
+    s_tex_unit_mask = tex_unit_mask;
+}
+
+void _ogx_arrays_process_element(int index)
+{
+    get_reader(&glparamstate.vertex_array)->process_element(index);
+
+    if (s_has_normals) {
+        get_reader(&glparamstate.normal_array)->process_element(index);
+    }
+
+    if (s_num_colors) {
+        get_reader(&glparamstate.color_array)->process_element(index);
+    }
+
+    if (s_tex_unit_mask) {
+        for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+            if (s_tex_unit_mask & (1 << i)) {
+                get_reader(&glparamstate.texcoord_array[i])->
+                    process_element(index);
             }
         }
     }

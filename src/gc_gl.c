@@ -2310,22 +2310,7 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
     GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
     for (int i = 0; i < count + loop; i++) {
         int index = read_index(indices, type, i % count);
-        _ogx_array_reader_process_element(&glparamstate.vertex_array, index);
-
-        if (ne) {
-            _ogx_array_reader_process_element(&glparamstate.normal_array, index);
-        }
-
-        if (color_provide) {
-            _ogx_array_reader_process_element(&glparamstate.color_array, index);
-        }
-
-        for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-            if (texen & (1 << tex)) {
-                _ogx_array_reader_process_element(
-                    &glparamstate.texcoord_array[tex], index);
-            }
-        }
+        _ogx_arrays_process_element(index);
     }
     GX_End();
 }
@@ -2487,22 +2472,7 @@ static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
     int i;
     for (i = 0; i < count + loop; i++) {
         int j = i % count + first;
-        _ogx_array_reader_process_element(&glparamstate.vertex_array, j);
-
-        if (ne) {
-            _ogx_array_reader_process_element(&glparamstate.normal_array, j);
-        }
-
-        if (color_provide) {
-            _ogx_array_reader_process_element(&glparamstate.color_array, j);
-        }
-
-        for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-            if (texen & (1 << tex)) {
-                _ogx_array_reader_process_element(
-                    &glparamstate.texcoord_array[tex], j);
-            }
-        }
+        _ogx_arrays_process_element(j);
     }
     GX_End();
 }
