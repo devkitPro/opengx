@@ -58,7 +58,9 @@ typedef union {
     (TEXTURE_USER_DATA(&texture.texobj).d.is_reserved)
 #define TEXTURE_RESERVE(texture) \
     { \
-        UserData ud = TEXTURE_USER_DATA(&(texture).texobj); \
+        GX_InitTexObj(&(texture).texobj, NULL, 0, 0, 0, \
+                      GX_REPEAT, GX_REPEAT, 0); \
+        UserData ud = { .ptr = NULL }; \
         ud.d.is_reserved = 1; \
         GX_InitTexObjUserData(&(texture).texobj, ud.ptr); \
     }
@@ -432,7 +434,6 @@ void glTexImage2D(GLenum target, GLint level, GLint internalFormat, GLsizei widt
         ti.maxlevel = level;
         ti.width = wi;
         ti.height = he;
-        ti.wraps = ti.wrapt = GX_REPEAT;
     }
     if (ti.maxlevel < level)
         ti.maxlevel = level;
@@ -540,8 +541,6 @@ void glGenTextures(GLsizei n, GLuint *textures)
     int i;
     for (i = 0; i < _MAX_GL_TEX && n > 0; i++) {
         if (!TEXTURE_IS_RESERVED(texture_list[i])) {
-            GXTexObj *texobj = &texture_list[i].texobj;
-            GX_InitTexObj(texobj, NULL, 0, 0, 0, GX_REPEAT, GX_REPEAT, 0);
             TEXTURE_RESERVE(texture_list[i]);
             *texlist++ = i;
             n--;
