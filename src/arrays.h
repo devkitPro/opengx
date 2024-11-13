@@ -48,10 +48,8 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
                             const void *data,
                             int num_components, GLenum type, int stride);
-void _ogx_array_reader_setup_draw_start();
-void _ogx_array_reader_setup_draw(OgxArrayReader *reader);
-void _ogx_array_reader_setup_draw_color(OgxArrayReader *reader,
-                                        bool dup_color);
+void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
+                            uint8_t tex_unit_mask);
 void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
                                         bool dup_color);
 void _ogx_array_reader_process_element(OgxArrayReader *reader, int index);

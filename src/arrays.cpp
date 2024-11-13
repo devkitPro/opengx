@@ -438,24 +438,33 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
             type, vertex_attribute);
 }
 
-void _ogx_array_reader_setup_draw_start()
+static inline VertexReaderBase *get_reader(OgxArrayReader *reader)
+{
+    return reinterpret_cast<VertexReaderBase *>(reader);
+}
+
+void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
+                            uint8_t tex_unit_mask)
 {
     GX_ClearVtxDesc();
     s_num_tex_arrays = 0;
-}
 
-void _ogx_array_reader_setup_draw(OgxArrayReader *reader)
-{
-    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
-    r->setup_draw();
-}
-
-void _ogx_array_reader_setup_draw_color(OgxArrayReader *reader,
-                                        bool dup_color)
-{
-    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
-    r->enable_duplicate_color(dup_color);
-    r->setup_draw();
+    get_reader(&glparamstate.vertex_array)->setup_draw();
+    if (has_normals) {
+        get_reader(&glparamstate.normal_array)->setup_draw();
+    }
+    if (num_colors > 0) {
+        VertexReaderBase *r = get_reader(&glparamstate.color_array);
+        r->enable_duplicate_color(num_colors > 1);
+        r->setup_draw();
+    }
+    if (tex_unit_mask) {
+        for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+            if (tex_unit_mask & (1 << i)) {
+                get_reader(&glparamstate.texcoord_array[i])->setup_draw();
+            }
+        }
+    }
 }
 
 void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,

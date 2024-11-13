@@ -229,20 +229,17 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         }
     }
 
-    _ogx_array_reader_setup_draw_start();
-    _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
-    if (dg->cs.normal_enabled) {
-        _ogx_array_reader_setup_draw(&glparamstate.normal_array);
-    } else {
+    _ogx_arrays_setup_draw(dg->cs.normal_enabled,
+                           dg->cs.color_enabled ? 2 : 0,
+                           dg->cs.texcoord_enabled);
+    if (!dg->cs.normal_enabled) {
         GX_SetVtxDesc(GX_VA_NRM, GX_INDEX8);
         GX_SetArray(GX_VA_NRM, s_current_normal, 12);
         floatcpy(s_current_normal, glparamstate.imm_mode.current_normal, 3);
         /* Not needed on Dolphin, but it is on a Wii */
         DCStoreRange(s_current_normal, 12);
     }
-    if (dg->cs.color_enabled) {
-        _ogx_array_reader_setup_draw_color(&glparamstate.color_array, true);
-    } else {
+    if (!dg->cs.color_enabled) {
         GX_SetVtxDesc(GX_VA_CLR0, GX_INDEX8);
         GX_SetVtxDesc(GX_VA_CLR1, GX_INDEX8);
         s_current_color = current_color;
@@ -251,13 +248,8 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         DCStoreRange(&s_current_color, 4);
     }
 
-    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-        /* It makes no sense to use a fixed texture coordinates for all vertices,
-         * so we won't add them unless they are enabled. */
-        if (dg->cs.texcoord_enabled & (1 << i)) {
-            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[i]);
-        }
-    }
+    /* It makes no sense to use a fixed texture coordinates for all vertices,
+     * so we won't add them unless they are enabled. */
 
     GX_InvVtxCache();
 

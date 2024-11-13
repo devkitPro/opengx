@@ -2296,18 +2296,7 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
                                   const GLvoid *indices,
                                   int ne, int color_provide, int texen)
 {
-    _ogx_array_reader_setup_draw_start();
-    _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
-    if (ne)
-        _ogx_array_reader_setup_draw(&glparamstate.normal_array);
-    if (color_provide)
-        _ogx_array_reader_setup_draw_color(&glparamstate.color_array,
-                                           color_provide == 2);
-    for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-        if (texen & (1 << tex)) {
-            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[tex]);
-        }
-    }
+    _ogx_arrays_setup_draw(ne, color_provide, texen);
 
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
@@ -2488,18 +2477,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
 static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
                                 int color_provide, int texen)
 {
-    _ogx_array_reader_setup_draw_start();
-    _ogx_array_reader_setup_draw(&glparamstate.vertex_array);
-    if (ne)
-        _ogx_array_reader_setup_draw(&glparamstate.normal_array);
-    if (color_provide)
-        _ogx_array_reader_setup_draw_color(&glparamstate.color_array,
-                                           color_provide == 2);
-    for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-        if (texen & (1 << tex)) {
-            _ogx_array_reader_setup_draw(&glparamstate.texcoord_array[tex]);
-        }
-    }
+    _ogx_arrays_setup_draw(ne, color_provide, texen);
 
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
