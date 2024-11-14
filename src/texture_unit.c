@@ -447,10 +447,6 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
     u8 prev_rgb = raster_rgb;
     u8 prev_alpha = raster_alpha;
 
-    /* This variable holds the number of enabled texture units for which the
-     * client provided texture coordinates (not generated, but literally a
-     * GX_VA_TEX* array was specified). */
-    int units_with_coordinates = 0;
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (!(glparamstate.texture_enabled & (1 << tex))) continue;
 
@@ -461,7 +457,8 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
             glparamstate.cs.texcoord_enabled & (1 << tex);
         u8 input_coordinates;
         if (has_texture_coordinates) {
-            input_coordinates = GX_TG_TEX0 + units_with_coordinates++;
+            input_coordinates = _ogx_array_reader_get_tex_coord_source(
+                                        &glparamstate.texcoord_array[tex]);
         } else if (!tu->gen_enabled) {
             warning("Skipping texture unit, since coordinates are missing.");
             continue;
@@ -476,12 +473,19 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
                             prev_rgb, prev_alpha,
                             raster_rgb, raster_alpha, channel);
 
-        setup_texture_stage_matrix(tu, dtt_matrix);
-        if (tu->gen_enabled) {
-            setup_texture_gen(tu, tex_coord, dtt_matrix, input_coordinates);
+        if (input_coordinates == GX_TG_POS || input_coordinates == GX_TG_NRM) {
+            u8 matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+            GX_LoadTexMtxImm(tu->matrix[tu->matrix_index], matrix_src, GX_MTX2x4);
+            GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4,
+                              input_coordinates, matrix_src);
         } else {
-            GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, input_coordinates,
-                               GX_IDENTITY, FALSE, dtt_matrix);
+            setup_texture_stage_matrix(tu, dtt_matrix);
+            if (tu->gen_enabled) {
+                setup_texture_gen(tu, tex_coord, dtt_matrix, input_coordinates);
+            } else {
+                GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, input_coordinates,
+                                   GX_IDENTITY, FALSE, dtt_matrix);
+            }
         }
 
         /* All texture stages after the first one get their vertex color from

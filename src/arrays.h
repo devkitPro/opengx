@@ -54,6 +54,7 @@ void _ogx_arrays_process_element(int index);
 void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
                                         bool dup_color);
 void _ogx_array_reader_process_element(OgxArrayReader *reader, int index);
+uint8_t _ogx_array_reader_get_tex_coord_source(OgxArrayReader *reader);
 
 void _ogx_array_reader_read_pos3f(OgxArrayReader *reader,
                                   int index, float *pos);

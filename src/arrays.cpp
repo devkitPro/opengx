@@ -163,6 +163,11 @@ struct VertexReaderBase {
         this->dup_color = dup_color;
     }
 
+    void set_tex_coord_source(uint8_t source) { tex_coord_source = source; }
+    bool has_same_data(VertexReaderBase *other) const {
+        return data == other->data && stride == other->stride;
+    }
+
     virtual void process_element(int index) = 0;
 
     virtual void read_color(int index, GXColor *color) = 0;
@@ -174,6 +179,7 @@ struct VertexReaderBase {
     const char *data;
     uint16_t stride;
     bool dup_color;
+    uint8_t tex_coord_source;
     VboType vbo;
 };
 
@@ -452,26 +458,53 @@ void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
     GX_ClearVtxDesc();
     s_num_tex_arrays = 0;
 
-    get_reader(&glparamstate.vertex_array)->setup_draw();
+    VertexReaderBase *vertex_reader = get_reader(&glparamstate.vertex_array);
+    vertex_reader->setup_draw();
+
+    VertexReaderBase *normal_reader = nullptr;
     if (has_normals) {
-        get_reader(&glparamstate.normal_array)->setup_draw();
+        normal_reader = get_reader(&glparamstate.normal_array);
+        normal_reader->setup_draw();
     }
     if (num_colors > 0) {
         VertexReaderBase *r = get_reader(&glparamstate.color_array);
         r->enable_duplicate_color(num_colors > 1);
         r->setup_draw();
     }
+
+    int sent_tex_arrays = 0;
+    s_tex_unit_mask = 0;
     if (tex_unit_mask) {
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             if (tex_unit_mask & (1 << i)) {
-                get_reader(&glparamstate.texcoord_array[i])->setup_draw();
+                VertexReaderBase *r = get_reader(&glparamstate.texcoord_array[i]);
+                /* See if the data array is the same as the positional or
+                 * normal array. This is not just an optimization, it's
+                 * actually needed because GX only supports up to two input
+                 * coordinates for GX_VA_TEXx, but the client might provide
+                 * three (along with an appropriate texture matrix). So, at
+                 * least in those cases where these arrays coincide, we can
+                 * support having three texture input coordinates. */
+                if (r->has_same_data(vertex_reader)) {
+                    r->set_tex_coord_source(GX_TG_POS);
+                } else if (normal_reader &&
+                           r->has_same_data(normal_reader)) {
+                    r->set_tex_coord_source(GX_TG_NRM);
+                } else {
+                    /* We could go on and check if this array has the same data
+                     * of another texture array sent earlier in this same loop,
+                     * but let's leave this optimisation for later. */
+                    r->setup_draw();
+                    r->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
+                    s_tex_unit_mask |= (1 << i);
+                }
             }
         }
     }
 
     s_has_normals = has_normals;
     s_num_colors = num_colors;
-    s_tex_unit_mask = tex_unit_mask;
+    /* s_tex_unit_mask has been set in the loop above */
 }
 
 void _ogx_arrays_process_element(int index)
@@ -507,6 +540,11 @@ void _ogx_array_reader_process_element(OgxArrayReader *reader, int index)
 {
     VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->process_element(index);
+}
+
+uint8_t _ogx_array_reader_get_tex_coord_source(OgxArrayReader *reader)
+{
+    return get_reader(reader)->tex_coord_source;
 }
 
 void _ogx_array_reader_read_pos3f(OgxArrayReader *reader,
