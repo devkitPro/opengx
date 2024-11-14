@@ -1051,6 +1051,8 @@ void glPushMatrix(void)
                 set_error(GL_STACK_OVERFLOW);
                 return;
             }
+            memcpy(tu->matrix[tu->matrix_index + 1],
+                   tu->matrix[tu->matrix_index], sizeof(Mtx));
             tu->matrix_index++;
         }
     default:
