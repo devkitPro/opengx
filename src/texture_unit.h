@@ -36,8 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 extern "C" {
 #endif
 
-void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
-                               u8 channel);
+void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel);
 
 #ifdef __cplusplus
 } // extern C

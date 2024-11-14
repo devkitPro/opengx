@@ -2041,6 +2041,14 @@ static void setup_fog()
 
 bool _ogx_setup_render_stages()
 {
+    u8 raster_output, raster_reg_index;
+    if (glparamstate.texture_enabled) {
+        raster_reg_index = _ogx_gpu_resources->tevreg_first++;
+        raster_output = GX_TEVREG0 + raster_reg_index;
+    } else {
+        raster_output = GX_TEVPREV;
+    }
+
     if (glparamstate.lighting.enabled) {
         LightMasks light_mask = prepare_lighting();
 
@@ -2135,14 +2143,14 @@ bool _ogx_setup_render_stages()
         GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_CPREV, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
         GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_RASA, GX_CA_ZERO);
         // Operation: Sum a + d
-        GX_SetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
-        GX_SetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+        GX_SetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, raster_output);
+        GX_SetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, raster_output);
         // Select COLOR1A1 for the rasterizer, disable all textures
         GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, GX_COLOR1A1);
 
         if (glparamstate.texture_enabled) {
-            // Do not select any raster value, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            _ogx_setup_texture_stages(GX_CC_CPREV, GX_CA_APREV, GX_COLORNULL);
+            // Do not select any raster color channel
+            _ogx_setup_texture_stages(raster_reg_index, GX_COLORNULL);
         }
     } else {
         // Unlit scene
@@ -2167,7 +2175,7 @@ bool _ogx_setup_render_stages()
 
         if (glparamstate.texture_enabled) {
             // Select COLOR0A0 for the rasterizer, Texture 0 for texture rasterizer and TEXCOORD0 slot for tex coordinates
-            _ogx_setup_texture_stages(GX_CC_RASC, GX_CA_RASA, GX_COLOR0A0);
+            _ogx_setup_texture_stages(raster_reg_index, GX_COLOR0A0);
         } else {
             // Use one stage only
             _ogx_gpu_resources->tevstage_first += 1;

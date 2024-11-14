@@ -78,7 +78,8 @@ typedef struct {
 } TevSource;
 
 static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand,
-                                    u8 prev_rgb, u8 prev_alpha)
+                                    u8 prev_rgb, u8 prev_alpha,
+                                    u8 raster_rgb, u8 raster_alpha)
 {
     TevSource ret = { GX_CC_ZERO, false };
     if (operand == GL_ONE_MINUS_SRC_COLOR) {
@@ -105,8 +106,8 @@ static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand,
     case GL_CONSTANT: ret.source = GX_CC_KONST; break;
     case GL_PRIMARY_COLOR:
         switch (operand) {
-        case GL_SRC_COLOR: ret.source = GX_CC_RASC; break;
-        case GL_SRC_ALPHA: ret.source = GX_CC_RASA; break;
+        case GL_SRC_COLOR: ret.source = raster_rgb; break;
+        case GL_SRC_ALPHA: ret.source = raster_alpha; break;
         }
         break;
     }
@@ -114,7 +115,7 @@ static TevSource gl_rgbsource_to_gx(GLenum source, GLenum operand,
 }
 
 static TevSource gl_alphasource_to_gx(GLenum source, GLenum operand,
-                                      u8 prev_alpha)
+                                      u8 prev_alpha, u8 raster_alpha)
 {
     TevSource ret = { GX_CA_ZERO, false };
     /* For the alpha channel, operand can only be either GL_SRC_ALPHA or
@@ -127,7 +128,7 @@ static TevSource gl_alphasource_to_gx(GLenum source, GLenum operand,
     case GL_TEXTURE: ret.source = GX_CA_TEXA; break;
     case GL_PREVIOUS: ret.source = prev_alpha; break;
     case GL_CONSTANT: ret.source = GX_CA_KONST; break;
-    case GL_PRIMARY_COLOR: ret.source = GX_CA_RASA; break;
+    case GL_PRIMARY_COLOR: ret.source = raster_alpha; break;
     }
     return ret;
 }
@@ -339,28 +340,21 @@ static TevInput compute_tev_input(GLenum combine_func, u8 stage, GXColor color,
     return ret;
 }
 
-static void setup_combine_operation(const OgxTextureUnit *te,
-                                    u8 stage)
+static void setup_combine_operation(const OgxTextureUnit *te, u8 stage,
+                                    u8 prev_rgb, u8 prev_alpha,
+                                    u8 raster_rgb, u8 raster_alpha)
 {
     TevSource source_rgb[3];
     TevSource source_alpha[3];
 
-    u8 prev_rgb, prev_alpha;
-    if (stage == GX_TEVSTAGE0) {
-       prev_rgb = GX_CC_RASC;
-       prev_alpha = GX_CA_RASA;
-    } else {
-       prev_rgb = GX_CC_CPREV;
-       prev_alpha = GX_CA_APREV;
-    }
-
     for (int i = 0; i < 3; i++) {
         source_rgb[i] = gl_rgbsource_to_gx(te->source_rgb[i],
                                            te->operand_rgb[i],
-                                           prev_rgb, prev_alpha);
+                                           prev_rgb, prev_alpha,
+                                           raster_rgb, raster_alpha);
         source_alpha[i] = gl_alphasource_to_gx(te->source_alpha[i],
                                                te->operand_alpha[i],
-                                               prev_alpha);
+                                               prev_alpha, raster_alpha);
     }
 
     TevInput rgb = compute_tev_input(te->combine_rgb, stage, te->color,
@@ -379,7 +373,8 @@ static void setup_combine_operation(const OgxTextureUnit *te,
 
 static void setup_texture_stage(const OgxTextureUnit *tu,
                                 u8 stage, u8 tex_coord, u8 tex_map,
-                                u8 raster_color, u8 raster_alpha,
+                                u8 prev_rgb, u8 prev_alpha,
+                                u8 raster_rgb, u8 raster_alpha,
                                 u8 channel)
 {
     switch (tu->mode) {
@@ -391,25 +386,26 @@ static void setup_texture_stage(const OgxTextureUnit *tu,
     case GL_ADD:
         /* In data: d: Texture Color a: raster value, Operation: a+d
          * Alpha gets multiplied. */
-        GX_SetTevColorIn(stage, raster_color, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
-        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
+        GX_SetTevColorIn(stage, prev_rgb, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
+        GX_SetTevAlphaIn(stage, GX_CA_ZERO, prev_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     case GL_BLEND:
         /* In data: c: Texture Color, a: raster value, b: tex env
          * Operation: a(1-c)+b*c
          * Until we implement GL_TEXTURE_ENV_COLOR, use white (GX_CC_ONE) for
          * the tex env color. */
-        GX_SetTevColorIn(stage, raster_color, GX_CC_ONE, GX_CC_TEXC, GX_CC_ZERO);
-        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
+        GX_SetTevColorIn(stage, prev_rgb, GX_CC_ONE, GX_CC_TEXC, GX_CC_ZERO);
+        GX_SetTevAlphaIn(stage, GX_CA_ZERO, prev_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     case GL_COMBINE:
-        setup_combine_operation(tu, stage);
+        setup_combine_operation(tu, stage, prev_rgb, prev_alpha,
+                                raster_rgb, raster_alpha);
         break;
     case GL_MODULATE:
     default:
         // In data: c: Texture Color b: raster value, Operation: b*c
-        GX_SetTevColorIn(stage, GX_CC_ZERO, raster_color, GX_CC_TEXC, GX_CC_ZERO);
-        GX_SetTevAlphaIn(stage, GX_CA_ZERO, raster_alpha, GX_CA_TEXA, GX_CA_ZERO);
+        GX_SetTevColorIn(stage, GX_CC_ZERO, prev_rgb, GX_CC_TEXC, GX_CC_ZERO);
+        GX_SetTevAlphaIn(stage, GX_CA_ZERO, prev_alpha, GX_CA_TEXA, GX_CA_ZERO);
         break;
     }
     if (!tu->mode != GL_COMBINE) {
@@ -437,9 +433,20 @@ static void setup_texture_stage_matrix(const OgxTextureUnit *tu,
     GX_LoadTexMtxImm(m, dtt_matrix, GX_MTX3x4);
 }
 
-void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
-                               u8 channel)
+void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
 {
+    u8 raster_rgb, raster_alpha;
+    if (channel != GX_COLORNULL) {
+        raster_rgb = GX_CC_RASC;
+        raster_alpha = GX_CA_RASA;
+    } else {
+        raster_rgb = GX_CC_C0 + raster_reg_index * 2;
+        raster_alpha = GX_CA_A0 + raster_reg_index;
+    }
+
+    u8 prev_rgb = raster_rgb;
+    u8 prev_alpha = raster_alpha;
+
     /* This variable holds the number of enabled texture units for which the
      * client provided texture coordinates (not generated, but literally a
      * GX_VA_TEX* array was specified). */
@@ -466,7 +473,8 @@ void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
         u8 dtt_matrix = GX_DTTMTX0 + _ogx_gpu_resources->dttmtx_first++ * 3;
 
         setup_texture_stage(tu, stage, tex_coord, tex_map,
-                            raster_color, raster_alpha, channel);
+                            prev_rgb, prev_alpha,
+                            raster_rgb, raster_alpha, channel);
 
         setup_texture_stage_matrix(tu, dtt_matrix);
         if (tu->gen_enabled) {
@@ -478,7 +486,7 @@ void _ogx_setup_texture_stages(u8 raster_color, u8 raster_alpha,
 
         /* All texture stages after the first one get their vertex color from
          * the previous stage */
-        raster_color = GX_CC_CPREV;
-        raster_alpha = GX_CA_APREV;
+        prev_rgb = GX_CC_CPREV;
+        prev_alpha = GX_CA_APREV;
     }
 }
