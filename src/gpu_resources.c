@@ -52,6 +52,9 @@ static void resources_init(OgxGpuResources *resources)
     resources->kcolor_first = 0;
     resources->kcolor_end = GX_KCOLOR_MAX;
 
+    resources->tevreg_first = 0;
+    resources->tevreg_end = GX_MAX_TEVREG - 1; /* we exclude GX_TEVPREV */
+
     resources->texcoord_first = 0;
     resources->texcoord_end = GX_MAXCOORD;
 

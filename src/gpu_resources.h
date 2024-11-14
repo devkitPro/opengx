@@ -57,6 +57,8 @@ typedef struct {
     uint8_t tevstage_end;
     uint8_t kcolor_first;
     uint8_t kcolor_end;
+    uint8_t tevreg_first;
+    uint8_t tevreg_end;
     uint8_t texcoord_first;
     uint8_t texcoord_end;
     uint8_t pnmtx_first;

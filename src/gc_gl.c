@@ -2118,8 +2118,11 @@ bool _ogx_setup_render_stages()
 
         // STAGE 0: ambient*vert_color -> cprev
         // In data: d: Raster Color, a: emission color
-        GX_SetTevColor(GX_TEVPREV, ecol);
-        GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_CPREV, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
+        u8 emission_reg = _ogx_gpu_resources->tevreg_first++;
+        GX_SetTevColor(GX_TEVREG0 + emission_reg, ecol);
+        /* Multiply by two because there are alpha registers in between */
+        GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_C0 + emission_reg * 2,
+                         GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
         GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
         // Operation: Pass d
         GX_SetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
