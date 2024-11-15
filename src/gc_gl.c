@@ -89,8 +89,7 @@ static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
 extern int _ogx_functions_c;
 void *_ogx_force_proctable = &_ogx_functions_c;
 
-static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
-                                int color_provide, int texen);
+static void draw_arrays_general(DrawMode gxmode, int first, int count);
 
 static inline void update_modelview_matrix()
 {
@@ -2283,21 +2282,17 @@ static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
+    _ogx_arrays_setup_draw(false, /* no normals */
+                           false, /* no color */
+                           false /* no texturing */);
     /* TODO: we could use C++ templates here too, to build more effective
      * drawing functions that only process the data we need. */
-    draw_arrays_general(data->gxmode, data->first, data->count,
-                        false, /* no normals */
-                        false, /* no color */
-                        false /* no texturing */);
-    GX_End();
+    draw_arrays_general(data->gxmode, data->first, data->count);
 }
 
 static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
-                                  const GLvoid *indices,
-                                  int ne, int color_provide, int texen)
+                                  const GLvoid *indices)
 {
-    _ogx_arrays_setup_draw(ne, color_provide, texen);
-
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
@@ -2326,13 +2321,13 @@ static void flat_draw_elements(void *cb_data)
 {
     OgxDrawElementsData *data = cb_data;
 
+    _ogx_arrays_setup_draw(false, /* no normals */
+                           false, /* no color */
+                           false /* no texturing */);
+
     /* TODO: we could use C++ templates here too, to build more effective
      * drawing functions that only process the data we need. */
-    draw_elements_general(data->gxmode, data->count, data->type, data->indices,
-                          false, /* no normals */
-                          false, /* no color */
-                          false /* no texturing */);
-    GX_End();
+    draw_elements_general(data->gxmode, data->count, data->type, data->indices);
 }
 
 void glArrayElement(GLint i)
@@ -2363,6 +2358,30 @@ void glArrayElement(GLint i)
     }
 }
 
+static bool setup_draw()
+{
+    _ogx_efb_set_content_type(OGX_EFB_SCENE);
+
+    uint8_t texen = glparamstate.cs.texcoord_enabled & glparamstate.texture_enabled;
+    uint8_t color_provide = 0;
+    if (glparamstate.cs.color_enabled &&
+        (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
+        if (glparamstate.lighting.enabled)
+            color_provide = 2; // Lighting requires two color channels
+        else
+            color_provide = 1;
+    }
+    _ogx_arrays_setup_draw(glparamstate.cs.normal_enabled, color_provide, texen);
+
+    /* Note that _ogx_setup_render_stages() uses some information from the
+     * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
+     * after it. */
+    bool should_draw = _ogx_setup_render_stages();
+    if (!should_draw) return false;
+    _ogx_apply_state();
+    return true;
+}
+
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
     DrawMode gxmode = _ogx_draw_mode(mode);
@@ -2374,8 +2393,6 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
-    bool should_draw = true;
-    int texen = glparamstate.cs.texcoord_enabled;
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
         OgxDrawData draw_data = { gxmode, first, count };
@@ -2383,28 +2400,11 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
         _ogx_gpu_resources_pop();
     }
 
-    _ogx_efb_set_content_type(OGX_EFB_SCENE);
     _ogx_gpu_resources_push();
-    should_draw = _ogx_setup_render_stages();
-    _ogx_apply_state();
 
-    /* When not building a display list, we can optimize the drawing by
-     * avoiding passing texture coordinates if texturing is not enabled.
-     */
-    texen = texen & glparamstate.texture_enabled;
-
+    bool should_draw = setup_draw();
     if (should_draw) {
-        int color_provide = 0;
-        if (glparamstate.cs.color_enabled &&
-            (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
-            if (glparamstate.lighting.enabled)
-                color_provide = 2; // Lighting requires two color channels
-            else
-                color_provide = 1;
-        }
-
-        draw_arrays_general(gxmode, first, count, glparamstate.cs.normal_enabled,
-                            color_provide, texen);
+        draw_arrays_general(gxmode, first, count);
         glparamstate.draw_count++;
     }
 
@@ -2422,8 +2422,6 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
-    bool should_draw = true;
-    int texen = glparamstate.cs.texcoord_enabled;
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
         OgxDrawElementsData draw_data = { gxmode, count, type, indices };
@@ -2431,39 +2429,19 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
         _ogx_gpu_resources_pop();
     }
 
-    _ogx_efb_set_content_type(OGX_EFB_SCENE);
-
     _ogx_gpu_resources_push();
-    should_draw = _ogx_setup_render_stages();
-    _ogx_apply_state();
-    /* When not building a display list, we can optimize the drawing by
-     * avoiding passing texture coordinates if texturing is not enabled.
-     */
-    texen = texen & glparamstate.texture_enabled;
 
+    bool should_draw = setup_draw();
     if (should_draw) {
-        int color_provide = 0;
-        if (glparamstate.cs.color_enabled &&
-            (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
-            if (glparamstate.lighting.enabled)
-                color_provide = 2; // Lighting requires two color channels
-            else
-                color_provide = 1;
-        }
-
-        draw_elements_general(gxmode, count, type, indices,
-                              glparamstate.cs.normal_enabled, color_provide, texen);
+        draw_elements_general(gxmode, count, type, indices);
         glparamstate.draw_count++;
     }
 
     _ogx_gpu_resources_pop();
 }
 
-static void draw_arrays_general(DrawMode gxmode, int first, int count, int ne,
-                                int color_provide, int texen)
+static void draw_arrays_general(DrawMode gxmode, int first, int count)
 {
-    _ogx_arrays_setup_draw(ne, color_provide, texen);
-
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
