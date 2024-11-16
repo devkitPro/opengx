@@ -170,7 +170,7 @@ void _ogx_clip_enabled(int plane)
 
 void _ogx_clip_disabled(int plane)
 {
-    glparamstate.stencil.enabled &= ~(1 << plane);
+    glparamstate.clip_plane_mask &= ~(1 << plane);
     glparamstate.dirty.bits.dirty_clip_planes = 1;
 }
 
