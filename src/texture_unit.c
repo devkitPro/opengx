@@ -62,6 +62,17 @@ static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
         guMtxConcat(eye_plane, glparamstate.modelview_matrix, m);
         GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
         break;
+    case GL_REFLECTION_MAP:
+    case GL_SPHERE_MAP:
+        input_type = GX_TG_NRM;
+        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+        Mtx scale, translate, m;
+        guMtxScale(scale, 0.5f, 0.5f, 0.0f);
+        guMtxTrans(translate, 0.5f, 0.5f, 1.0f);
+        guMtxConcat(scale, glparamstate.modelview_matrix, m);
+        guMtxConcat(translate, m, m);
+        GX_LoadTexMtxImm(m, matrix_src, GX_MTX2x4);
+        break;
     default:
         warning("Unsupported texture coordinate generation mode %x",
                 tu->gen_mode);
