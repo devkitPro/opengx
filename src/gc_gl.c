@@ -2407,6 +2407,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
         draw_arrays_general(gxmode, first, count);
         glparamstate.draw_count++;
     }
+    _ogx_arrays_draw_done();
 
     _ogx_gpu_resources_pop();
 }
@@ -2436,6 +2437,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
         draw_elements_general(gxmode, count, type, indices);
         glparamstate.draw_count++;
     }
+    _ogx_arrays_draw_done();
 
     _ogx_gpu_resources_pop();
 }

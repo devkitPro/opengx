@@ -50,6 +50,8 @@ add_library(${TARGET} STATIC
     src/stencil.h
     src/texel.h
     src/texture.c
+    src/texture_gen_sw.c
+    src/texture_gen_sw.h
     src/texture_unit.c
     src/texture_unit.h
     src/types.h

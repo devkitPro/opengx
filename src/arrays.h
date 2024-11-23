@@ -50,7 +50,14 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
                             int num_components, GLenum type, int stride);
 void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask);
+/* Get the mask of units having texture coordinates. This is not necessarily
+ * the same as glparamstate.cs.texcoord_enabled, because we might have
+ * generated more arrays via software if the mode is not supported by the
+ * hardware (GL_SPHERE_MAP) */
+uint8_t _ogx_arrays_get_units_with_tex_coord();
 void _ogx_arrays_process_element(int index);
+/* Any memory allocated by the OgxArrayReader objects can be released. */
+void _ogx_arrays_draw_done();
 void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
                                         bool dup_color);
 void _ogx_array_reader_process_element(OgxArrayReader *reader, int index);
