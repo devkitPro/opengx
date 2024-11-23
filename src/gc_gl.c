@@ -195,11 +195,28 @@ int ogx_prepare_swap_buffers()
     return glparamstate.render_mode == GL_RENDER ? 0 : -1;
 }
 
+static int parse_hints()
+{
+    OgxHints hints = OGX_HINT_NONE;
+
+    /* comma separated list of operations for which a faster (but inaccurate)
+     * implementation is to be preferred over a more standard-compliant one.
+     * By default, we always prefer standard-compliance over speed. */
+    const char *env = getenv("OPENGX_FAST_OPS");
+    if (env) {
+        if (strstr(env, "sphere_map") != NULL)
+            hints |= OGX_HINT_FAST_SPHERE_MAP;
+    }
+
+    glparamstate.hints = hints;
+}
+
 void ogx_initialize()
 {
     _ogx_log_init();
 
     _ogx_gpu_resources_init();
+    parse_hints();
 
     glparamstate.current_call_list.index = -1;
     GX_SetDispCopyGamma(GX_GM_1_0);

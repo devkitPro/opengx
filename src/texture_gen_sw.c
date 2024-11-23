@@ -37,11 +37,35 @@ POSSIBILITY OF SUCH DAMAGE.
 bool _ogx_texture_gen_sw_enabled(uint8_t unit)
 {
     const OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+    OgxHints hint = OGX_HINT_NONE;
+    bool needs_normals = false;
 
-    if (tu->gen_mode != GL_SPHERE_MAP) return false;
+    switch (tu->gen_mode) {
+    case GL_SPHERE_MAP:
+        hint = OGX_HINT_FAST_SPHERE_MAP;
+        needs_normals = true;
+        break;
+    case GL_REFLECTION_MAP:
+        /* We don't support a standard-compiant generation of the reflection
+         * map yet, because its output should consist of three float
+         * components, whereas the TEV only supports two components for
+         * GX_VA_TEX*. One way to implement it would be to (ab)use the
+         * GX_VA_NBT format: storing the computed texture generated coordinates
+         * into the binormal part of the array, and then use them in the TEV as
+         * GX_TG_BINRM.
+         * But this requires yet one more refactoring of the array classes, to
+         * let the normals array switch between GX_VA_NRM and GX_VA_NBT
+         * depending on whether GL_REFLECTION_MAP is enabled. Let's leave this
+         * as a TODO.
+         */
+    default:
+        return false;
+    }
 
-    /* We need normal coordinates to be there */
-    if (!glparamstate.cs.normal_enabled) return false;
+    /* If the client prefers the inaccurate GPU implementation, let it be */
+    if (hint != OGX_HINT_NONE && (glparamstate.hints & hint)) return false;
+
+    if (needs_normals && !glparamstate.cs.normal_enabled) return false;
 
     return true;
 }

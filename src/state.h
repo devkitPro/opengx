@@ -63,6 +63,12 @@ extern "C" {
  * opengx when stencil is enabled. */
 #define MAX_TEXTURE_UNITS 4
 
+typedef enum {
+    OGX_HINT_NONE = 0,
+    /* Enables fast (but wrong) GPU-accelerated GL_SPHERE_MAP */
+    OGX_HINT_FAST_SPHERE_MAP = 1 << 0,
+} OgxHints;
+
 typedef struct {
     Pos3f pos;
     Norm3f norm;
@@ -130,6 +136,8 @@ typedef struct glparams_
     int cur_modv_mat, cur_proj_mat;
 
     int viewport[4];
+
+    OgxHints hints;
 
     unsigned char srcblend, dstblend;
     unsigned char blendenabled;
