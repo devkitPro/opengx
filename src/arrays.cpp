@@ -284,11 +284,43 @@ struct DirectVboReader: public VertexReaderBase {
     void process_element(int index) {
         GX_Position1x16(index);
     }
+    template<typename T> const T *elemAt(int index) {
+        return reinterpret_cast<const T*>(data + stride * index);
+    }
+
+    template<typename T>
+    void read_floats(int index, float *out) {
+        const T *ptr = elemAt<T>(index);
+        out[0] = *ptr++;
+        out[1] = *ptr++;
+        if (format.num_components >= 3) {
+            out[2] = *ptr++;
+        } else {
+            out[2] = 0.0f;
+        }
+    }
+
+    void read_float_components(int index, float *out) {
+        switch (format.size) {
+        case GX_F32: read_floats<float>(index, out); break;
+        case GX_S16: read_floats<int16_t>(index, out); break;
+        case GX_U16: read_floats<uint16_t>(index, out); break;
+        case GX_S8: read_floats<int8_t>(index, out); break;
+        case GX_U8: read_floats<uint8_t>(index, out); break;
+        }
+    }
+
+    void read_pos3f(int index, Pos3f pos) override {
+        read_float_components(index, pos);
+    }
+    void read_norm3f(int index, Norm3f norm) override {
+        read_float_components(index, norm);
+    }
+
     /* These should never be called on this class, since it doesn't make sense
-     * to call glArrayElement() when a VBO is bound. */
+     * to call glArrayElement() when a VBO is bound, and they are not used for
+     * texture coordinate generation. */
     void read_color(int index, GXColor *color) override {}
-    void read_pos3f(int index, Pos3f pos) override {}
-    void read_norm3f(int index, Norm3f norm) override {}
     void read_tex2f(int index, Tex2f tex) override {}
 };
 
