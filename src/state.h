@@ -147,6 +147,8 @@ typedef struct glparams_
     bool color_update;
     bool polygon_offset_fill;
     bool raster_pos_valid;
+    unsigned point_sprites_enabled : 1;
+    unsigned point_sprites_coord_replace : 1;
     char active_texture;
     uint8_t alpha_func, alpha_ref, alphatest_enabled;
     uint8_t clip_plane_mask;

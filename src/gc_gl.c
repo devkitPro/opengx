@@ -278,6 +278,8 @@ void ogx_initialize()
         tu->texture_object_plane_t[1] = 1.0f;
     }
     glparamstate.active_texture = 0;
+    glparamstate.point_sprites_enabled = 0;
+    glparamstate.point_sprites_coord_replace = 0;
 
     glparamstate.cur_proj_mat = -1;
     glparamstate.cur_modv_mat = -1;
@@ -600,6 +602,9 @@ void glEnable(GLenum cap)
         glparamstate.lighting.lights[cap - GL_LIGHT0].enabled = 1;
         glparamstate.dirty.bits.dirty_lighting = 1;
         break;
+    case GL_POINT_SPRITE:
+        glparamstate.point_sprites_enabled = 1;
+        break;
     case GL_POLYGON_OFFSET_FILL:
         glparamstate.polygon_offset_fill = 1;
         glparamstate.dirty.bits.dirty_matrices = 1;
@@ -666,6 +671,9 @@ void glDisable(GLenum cap)
     case GL_LIGHT3:
         glparamstate.lighting.lights[cap - GL_LIGHT0].enabled = 0;
         glparamstate.dirty.bits.dirty_lighting = 1;
+        break;
+    case GL_POINT_SPRITE:
+        glparamstate.point_sprites_enabled = 0;
         break;
     case GL_POLYGON_OFFSET_FILL:
         glparamstate.polygon_offset_fill = 0;

@@ -255,6 +255,15 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
 {
     HANDLE_CALL_LIST(TEX_ENV, target, pname, param);
 
+    if (target == GL_POINT_SPRITE) {
+        switch (pname) {
+        case GL_COORD_REPLACE:
+            glparamstate.point_sprites_coord_replace = param;
+            break;
+        }
+        return;
+    }
+
     OgxTextureUnit *tu = active_tex_unit();
     switch (pname) {
     case GL_COMBINE_ALPHA:
