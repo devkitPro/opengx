@@ -2381,7 +2381,7 @@ static bool setup_draw()
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
-    uint8_t texen = glparamstate.cs.texcoord_enabled & glparamstate.texture_enabled;
+    uint8_t texen = glparamstate.texture_enabled;
     uint8_t color_provide = 0;
     if (glparamstate.cs.color_enabled &&
         (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
