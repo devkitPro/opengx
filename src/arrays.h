@@ -48,7 +48,8 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
                             const void *data,
                             int num_components, GLenum type, int stride);
-void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
+void _ogx_arrays_setup_draw(uint8_t gxmode,
+                            bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask);
 /* Get the mask of units having texture coordinates. This is not necessarily
  * the same as glparamstate.cs.texcoord_enabled, because we might have

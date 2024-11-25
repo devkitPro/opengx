@@ -2309,7 +2309,8 @@ static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(false, /* no normals */
+    _ogx_arrays_setup_draw(data->gxmode.mode,
+                           false, /* no normals */
                            false, /* no color */
                            false /* no texturing */);
     /* TODO: we could use C++ templates here too, to build more effective
@@ -2348,7 +2349,8 @@ static void flat_draw_elements(void *cb_data)
 {
     OgxDrawElementsData *data = cb_data;
 
-    _ogx_arrays_setup_draw(false, /* no normals */
+    _ogx_arrays_setup_draw(data->gxmode.mode,
+                           false, /* no normals */
                            false, /* no color */
                            false /* no texturing */);
 
@@ -2385,7 +2387,7 @@ void glArrayElement(GLint i)
     }
 }
 
-static bool setup_draw()
+static bool setup_draw(uint8_t gxmode)
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
@@ -2398,7 +2400,8 @@ static bool setup_draw()
         else
             color_provide = 1;
     }
-    _ogx_arrays_setup_draw(glparamstate.cs.normal_enabled, color_provide, texen);
+    _ogx_arrays_setup_draw(gxmode,
+                           glparamstate.cs.normal_enabled, color_provide, texen);
 
     /* Note that _ogx_setup_render_stages() uses some information from the
      * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
@@ -2429,7 +2432,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw();
+    bool should_draw = setup_draw(gxmode.mode);
     if (should_draw) {
         draw_arrays_general(gxmode, first, count);
         glparamstate.draw_count++;
@@ -2459,7 +2462,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw();
+    bool should_draw = setup_draw(gxmode.mode);
     if (should_draw) {
         draw_elements_general(gxmode, count, type, indices);
         glparamstate.draw_count++;

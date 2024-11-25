@@ -428,6 +428,9 @@ static void setup_texture_stage(const OgxTextureUnit *tu,
                          GX_TEVPREV);
     }
     GX_SetTevOrder(stage, tex_coord, tex_map, channel);
+    bool points_enabled = glparamstate.point_sprites_enabled &&
+        glparamstate.point_sprites_coord_replace;
+    GX_EnableTexOffsets(tex_coord, GX_DISABLE, points_enabled);
     GX_LoadTexObj(&texture_list[tu->glcurtex].texobj, tex_map);
 }
 

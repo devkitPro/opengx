@@ -229,7 +229,9 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
         }
     }
 
-    _ogx_arrays_setup_draw(dg->cs.normal_enabled,
+    DrawMode gxmode = _ogx_draw_mode(dg->mode);
+    _ogx_arrays_setup_draw(gxmode.mode,
+                           dg->cs.normal_enabled,
                            dg->cs.color_enabled ? 2 : 0,
                            dg->cs.texcoord_enabled);
     if (!dg->cs.normal_enabled) {

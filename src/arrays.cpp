@@ -208,6 +208,13 @@ struct SphereMapTexReader: public GeneratedTexVertexReader {
     }
 };
 
+struct PointSpritesTexReader: public GeneratedTexVertexReader {
+    using GeneratedTexVertexReader::GeneratedTexVertexReader;
+    void read_tex2f(int index, Tex2f tex) override {
+        tex[0] = tex[1] = 0.0f;
+    }
+};
+
 struct VertexReaderBase: public AbstractVertexReader {
     VertexReaderBase(GxVertexFormat format, VboType vbo, const void *data,
                      int stride):
@@ -558,7 +565,8 @@ static inline VertexReaderBase *get_reader(OgxArrayReader *reader)
     return reinterpret_cast<VertexReaderBase *>(reader);
 }
 
-void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
+void _ogx_arrays_setup_draw(uint8_t gxmode,
+                            bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask)
 {
     GX_ClearVtxDesc();
@@ -584,6 +592,25 @@ void _ogx_arrays_setup_draw(bool has_normals, uint8_t num_colors,
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             VertexReaderBase *r = get_reader(&glparamstate.texcoord_array[i]);
             u8 unit_bit = 1 << i;
+
+            if (gxmode == GX_POINTS &&
+                glparamstate.point_sprites_enabled &&
+                glparamstate.point_sprites_coord_replace) {
+                if (tex_unit_mask & unit_bit) {
+                    /* Don't pass the texture coordinates specified by the
+                     * client, but a hardcoded (0, 0). */
+                    GeneratedTexVertexReader *gr =
+                        GeneratedTexVertexReader::create_at
+                        <PointSpritesTexReader>(&glparamstate.texcoord_array[i]);
+                    gr->setup_draw();
+                    gr->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
+                    s_tex_unit_mask |= unit_bit;
+                    /* Do not process more units */
+                    i = MAX_TEXTURE_UNITS;
+                }
+                continue;
+            }
+
             if (glparamstate.texture_unit[i].gen_enabled) {
                 /* Some kinds of texture generation cannot be performed by the
                  * GPU, and we have to generate the texture coordinates in
