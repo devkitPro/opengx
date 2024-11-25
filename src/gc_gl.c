@@ -1517,7 +1517,9 @@ void glBlendFunc(GLenum sfactor, GLenum dfactor)
 
 void glPointSize(GLfloat size)
 {
-    GX_SetPointSize((unsigned int)(size * 16), GX_TO_ZERO);
+    unsigned int gxsize = size;
+    if (gxsize > 255) gxsize = 255;
+    GX_SetPointSize(gxsize, GX_TO_ONE);
 }
 
 void glLineWidth(GLfloat width)
