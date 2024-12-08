@@ -2490,30 +2490,30 @@ static void draw_arrays_general(DrawMode gxmode, int first, int count)
 void glFrustum(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top,
                GLdouble near, GLdouble far)
 {
-    Mtx44 mt;
+    float mt[16];
     f32 tmp;
 
     tmp = 1.0f / (right - left);
-    mt[0][0] = (2 * near) * tmp;
-    mt[0][1] = 0.0f;
-    mt[0][2] = (right + left) * tmp;
-    mt[0][3] = 0.0f;
+    mt[0] = (2 * near) * tmp;
+    mt[4] = 0.0f;
+    mt[8] = (right + left) * tmp;
+    mt[12] = 0.0f;
     tmp = 1.0f / (top - bottom);
-    mt[1][0] = 0.0f;
-    mt[1][1] = (2 * near) * tmp;
-    mt[1][2] = (top + bottom) * tmp;
-    mt[1][3] = 0.0f;
+    mt[1] = 0.0f;
+    mt[5] = (2 * near) * tmp;
+    mt[9] = (top + bottom) * tmp;
+    mt[13] = 0.0f;
     tmp = 1.0f / (far - near);
-    mt[2][0] = 0.0f;
-    mt[2][1] = 0.0f;
-    mt[2][2] = -(far + near) * tmp;
-    mt[2][3] = -2.0 * (far * near) * tmp;
-    mt[3][0] = 0.0f;
-    mt[3][1] = 0.0f;
-    mt[3][2] = -1.0f;
-    mt[3][3] = 0.0f;
+    mt[2] = 0.0f;
+    mt[6] = 0.0f;
+    mt[10] = -(far + near) * tmp;
+    mt[14] = -2.0 * (far * near) * tmp;
+    mt[3] = 0.0f;
+    mt[7] = 0.0f;
+    mt[11] = -1.0f;
+    mt[15] = 0.0f;
 
-    glMultMatrixf((float *)mt);
+    glMultMatrixf(mt);
 }
 
 void glOrtho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble near_val, GLdouble far_val)
