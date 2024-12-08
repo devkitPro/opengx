@@ -275,10 +275,12 @@ static inline void gl_matrix_to_gx(const GLfloat *source, Mtx mv)
     float w = source[15];
     if (w != 1.0 && w != 0.0) {
         for (int i = 0; i < 16; i++) {
+            if (i % 4 == 3) continue;
             mv[i%4][i/4] = source[i] / w;
         }
     } else {
         for (int i = 0; i < 16; i++) {
+            if (i % 4 == 3) continue;
             mv[i%4][i/4] = source[i];
         }
     }
