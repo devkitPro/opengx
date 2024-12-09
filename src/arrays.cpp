@@ -116,6 +116,9 @@ static TemplateSelectionInfo select_template(GLenum type,
         info.format.type = num_components == 1 ? GX_TEX_S : GX_TEX_ST;
         info.format.size = gl_type_to_gx_size(type);
         info.same_type = num_components <= 2;
+        /* The hardware does not support sending more than 2 texture
+         * coordinates */
+        if (num_components > 2) info.format.num_components = 2;
         break;
     case GX_VA_CLR0:
     case GX_VA_CLR1:
