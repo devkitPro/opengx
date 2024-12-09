@@ -300,11 +300,7 @@ void ogx_initialize()
     glparamstate.imm_mode.current_numverts = 0;
     glparamstate.imm_mode.in_gl_begin = 0;
 
-    glparamstate.cs.vertex_enabled = 0; // DisableClientState on everything
-    glparamstate.cs.normal_enabled = 0;
-    glparamstate.cs.texcoord_enabled = 0;
-    glparamstate.cs.index_enabled = 0;
-    glparamstate.cs.color_enabled = 0;
+    glparamstate.cs.as_int = 0; // DisableClientState on everything
 
     glparamstate.texture_enabled = 0;
     glparamstate.pack_alignment = 4;
@@ -949,7 +945,7 @@ void glBegin(GLenum mode)
 
 void glEnd()
 {
-    struct client_state cs_backup = glparamstate.cs;
+    union client_state cs_backup = glparamstate.cs;
     VertexData *base = glparamstate.imm_mode.current_vertices;
     int stride = sizeof(VertexData);
     for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {

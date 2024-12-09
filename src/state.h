@@ -181,14 +181,17 @@ typedef struct glparams_
     void *index_array;
     OgxArrayReader vertex_array, normal_array, color_array;
     OgxArrayReader texcoord_array[MAX_TEXTURE_UNITS];
-    struct client_state
+    union client_state
     {
-        unsigned vertex_enabled : 1;
-        unsigned normal_enabled : 1;
-        unsigned index_enabled : 1;
-        unsigned color_enabled : 1;
-        unsigned texcoord_enabled : MAX_TEXTURE_UNITS;
-        char active_texture;
+        struct {
+            unsigned vertex_enabled : 1;
+            unsigned normal_enabled : 1;
+            unsigned index_enabled : 1;
+            unsigned color_enabled : 1;
+            unsigned texcoord_enabled : MAX_TEXTURE_UNITS;
+            char active_texture;
+        };
+        uint32_t as_int;
     } cs;
 
     unsigned texture_enabled : MAX_TEXTURE_UNITS;

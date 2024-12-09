@@ -103,7 +103,7 @@ typedef struct
         struct DrawGeometry {
             GLenum mode;
             uint16_t count;
-            struct client_state cs;
+            union client_state cs;
             u32 list_size;
             void *gxlist;
         } draw_geometry;
@@ -267,7 +267,7 @@ static void flat_draw_geometry(void *cb_data)
 
 static void run_draw_geometry(struct DrawGeometry *dg)
 {
-    struct client_state cs;
+    union client_state cs;
 
     /* Update the drawing mode on the list. This required peeping into
      * GX_Begin() code. */
