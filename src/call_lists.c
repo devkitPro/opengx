@@ -53,12 +53,6 @@ typedef struct
 {
     CommandType type;
     union {
-        struct GXDisplayList {
-            void *list;
-            u32 size;
-            struct client_state cs;
-        } gxlist;
-
         GLuint gllist; // glCallList
 
         GLenum cap; // glEnable, glDisable
