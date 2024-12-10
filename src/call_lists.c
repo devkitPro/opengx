@@ -132,6 +132,8 @@ static GXColor s_current_color;
 static float s_current_normal[3];
 static bool s_last_draw_used_indexed_data = false;
 static uint16_t s_last_draw_sync_token = 0;
+static union client_state s_last_client_state;
+static bool s_last_client_state_is_valid = false;
 
 #define BUFFER_IS_VALID(buffer) (((uint32_t)buffer) > 1)
 #define LIST_IS_USED(index) BUFFER_IS_VALID(call_lists[index].head)
@@ -194,13 +196,12 @@ static Command *new_command(CommandBuffer **head)
     }
 }
 
-static void execute_draw_geometry_list(struct DrawGeometry *dg)
+static void setup_draw_geometry(struct DrawGeometry *dg,
+                                bool uses_indexed_data)
 {
-    static uint16_t counter = 0;
     u8 vtxindex = GX_VTXFMT0;
     GXColor current_color;
 
-    bool uses_indexed_data = !dg->cs.normal_enabled || !dg->cs.color_enabled;
     if (uses_indexed_data && s_last_draw_used_indexed_data) {
         bool data_changed = false;
         /* If the indexed data has changed, we need to wait until the previous
@@ -248,6 +249,17 @@ static void execute_draw_geometry_list(struct DrawGeometry *dg)
      * so we won't add them unless they are enabled. */
 
     GX_InvVtxCache();
+}
+
+static void execute_draw_geometry_list(struct DrawGeometry *dg)
+{
+    bool uses_indexed_data = !dg->cs.normal_enabled || !dg->cs.color_enabled;
+    if (!s_last_client_state_is_valid ||
+        s_last_client_state.as_int != dg->cs.as_int) {
+        setup_draw_geometry(dg, uses_indexed_data);
+        s_last_client_state = dg->cs;
+        s_last_client_state_is_valid = true;
+    }
 
     GX_CallDispList(dg->gxlist, dg->list_size);
 
@@ -298,9 +310,11 @@ static void run_draw_geometry(struct DrawGeometry *dg)
     glparamstate.draw_count++;
 
     if (glparamstate.stencil.enabled) {
+        s_last_client_state_is_valid = false;
         _ogx_gpu_resources_push();
         _ogx_stencil_draw(flat_draw_geometry, dg);
         _ogx_gpu_resources_pop();
+        s_last_client_state_is_valid = false;
     }
 }
 
@@ -765,6 +779,10 @@ void glCallList(GLuint id)
     }
 
 done:
+    /* Until we find a reliable mechanism to ensure that the client state has
+     * been preserved, avoid reusing it across different lists. */
+    s_last_client_state_is_valid = false;
+
     if (must_decrement) {
         glparamstate.current_call_list.execution_depth--;
     }
