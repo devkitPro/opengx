@@ -586,6 +586,7 @@ void glEnable(GLenum cap)
         break;
     case GL_FOG:
         glparamstate.fog.enabled = 1;
+        glparamstate.dirty.bits.dirty_fog = 1;
         break;
     case GL_LIGHTING:
         glparamstate.lighting.enabled = 1;
@@ -696,6 +697,7 @@ void glFogf(GLenum pname, GLfloat param)
         glparamstate.fog.end = param;
         break;
     }
+    glparamstate.dirty.bits.dirty_fog = 1;
 }
 
 void glFogi(GLenum pname, GLint param)
@@ -708,8 +710,9 @@ void glFogi(GLenum pname, GLint param)
     case GL_FOG_START:
     case GL_FOG_END:
         glFogf(pname, param);
-        break;
+        return;
     }
+    glparamstate.dirty.bits.dirty_fog = 1;
 }
 
 void glFogfv(GLenum pname, const GLfloat *params)
@@ -720,11 +723,12 @@ void glFogfv(GLenum pname, const GLfloat *params)
     case GL_FOG_START:
     case GL_FOG_END:
         glFogf(pname, params[0]);
-        break;
+        return;
     case GL_FOG_COLOR:
         floatcpy(glparamstate.fog.color, params, 4);
         break;
     }
+    glparamstate.dirty.bits.dirty_fog = 1;
 }
 
 void glLightf(GLenum light, GLenum pname, GLfloat param)
@@ -1347,6 +1351,7 @@ void glClear(GLbitfield mask)
     if (glparamstate.fog.enabled) {
         /* Disable fog while clearing */
         GX_SetFog(GX_FOG_NONE, 0.0, 0.0, 0.0, 0.0, glparamstate.clear_color);
+        glparamstate.dirty.bits.dirty_fog = 1;
     }
 
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
@@ -2226,8 +2231,6 @@ bool _ogx_setup_render_stages()
      * OgxGpuResources::{tevstage,texcoord}_first. */
     GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
     GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
-
-    setup_fog();
     return true;
 }
 
@@ -2279,6 +2282,11 @@ void _ogx_apply_state()
     }
     if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_lighting) {
         update_normal_matrix();
+    }
+
+    if (glparamstate.dirty.bits.dirty_fog) {
+        setup_fog();
+        glparamstate.dirty.bits.dirty_fog = 0;
     }
 
     /* Reset the updated bits to 0. We don't unconditionally reset everything

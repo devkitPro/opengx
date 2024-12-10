@@ -245,6 +245,7 @@ typedef struct glparams_
             unsigned dirty_clip_planes : 1;
             unsigned dirty_cull : 1;
             unsigned dirty_stencil : 1;
+            unsigned dirty_fog : 1;
         } bits;
         unsigned int all;
     } dirty;
