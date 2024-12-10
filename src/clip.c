@@ -165,13 +165,13 @@ void _ogx_clip_setup_tev()
 void _ogx_clip_enabled(int plane)
 {
     glparamstate.clip_plane_mask |= 1 << plane;
-    glparamstate.dirty.bits.dirty_clip_planes = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void _ogx_clip_disabled(int plane)
 {
     glparamstate.clip_plane_mask &= ~(1 << plane);
-    glparamstate.dirty.bits.dirty_clip_planes = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glClipPlane(GLenum plane, const GLdouble *equation)
@@ -192,4 +192,6 @@ void glClipPlane(GLenum plane, const GLdouble *equation)
     guMtx44Inverse(mv, mv_inverse);
     ClipPlane p0 = { equation[0], equation[1], equation[2], equation[3] };
     mtx44_multiply(p0, mv_inverse, *p);
+
+    glparamstate.dirty.bits.dirty_tev = 1;
 }

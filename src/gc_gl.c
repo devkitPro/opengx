@@ -544,6 +544,7 @@ void glEnable(GLenum cap)
     switch (cap) {
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
     case GL_TEXTURE_GEN_T:
@@ -553,9 +554,11 @@ void glEnable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled |= (1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
         glparamstate.lighting.color_material_enabled = 1;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_CULL_FACE:
         glparamstate.cullenabled = 1;
@@ -590,14 +593,14 @@ void glEnable(GLenum cap)
         break;
     case GL_LIGHTING:
         glparamstate.lighting.enabled = 1;
-        glparamstate.dirty.bits.dirty_lighting = 1;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_LIGHT0:
     case GL_LIGHT1:
     case GL_LIGHT2:
     case GL_LIGHT3:
         glparamstate.lighting.lights[cap - GL_LIGHT0].enabled = 1;
-        glparamstate.dirty.bits.dirty_lighting = 1;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_POINT_SPRITE:
         glparamstate.point_sprites_enabled = 1;
@@ -618,6 +621,7 @@ void glDisable(GLenum cap)
     switch (cap) {
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
     case GL_TEXTURE_GEN_T:
@@ -627,9 +631,11 @@ void glDisable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled &= ~(1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
         glparamstate.lighting.color_material_enabled = 0;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_CULL_FACE:
         glparamstate.cullenabled = 0;
@@ -660,14 +666,14 @@ void glDisable(GLenum cap)
         break;
     case GL_LIGHTING:
         glparamstate.lighting.enabled = 0;
-        glparamstate.dirty.bits.dirty_lighting = 1;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_LIGHT0:
     case GL_LIGHT1:
     case GL_LIGHT2:
     case GL_LIGHT3:
         glparamstate.lighting.lights[cap - GL_LIGHT0].enabled = 0;
-        glparamstate.dirty.bits.dirty_lighting = 1;
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_POINT_SPRITE:
         glparamstate.point_sprites_enabled = 0;
@@ -756,7 +762,7 @@ void glLightf(GLenum light, GLenum pname, GLfloat param)
     default:
         break;
     }
-    glparamstate.dirty.bits.dirty_lighting = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glLightfv(GLenum light, GLenum pname, const GLfloat *params)
@@ -794,7 +800,7 @@ void glLightfv(GLenum light, GLenum pname, const GLfloat *params)
         floatcpy(glparamstate.lighting.lights[lnum].specular_color, params, 4);
         break;
     }
-    glparamstate.dirty.bits.dirty_lighting = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glLightModelfv(GLenum pname, const GLfloat *params)
@@ -804,7 +810,7 @@ void glLightModelfv(GLenum pname, const GLfloat *params)
         floatcpy(glparamstate.lighting.globalambient, params, 4);
         break;
     }
-    glparamstate.dirty.bits.dirty_material = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 };
 
 void glMaterialf(GLenum face, GLenum pname, GLfloat param)
@@ -839,13 +845,14 @@ void glMaterialfv(GLenum face, GLenum pname, const GLfloat *params)
     default:
         break;
     }
-    glparamstate.dirty.bits.dirty_material = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 };
 
 void glColorMaterial(GLenum face, GLenum mode)
 {
     /* TODO: support the face parameter */
     glparamstate.lighting.color_material_mode = mode;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glPixelStoref(GLenum pname, GLfloat param)
@@ -1023,6 +1030,7 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.projection_matrix, glparamstate.projection_stack[glparamstate.cur_proj_mat], sizeof(Mtx44));
         glparamstate.cur_proj_mat--;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         if (glparamstate.cur_modv_mat < 0) {
@@ -1031,6 +1039,7 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1041,10 +1050,11 @@ void glPopMatrix(void)
             }
             tu->matrix_index--;
         }
+        glparamstate.dirty.bits.dirty_tev = 1;
+        break;
     default:
         break;
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glPushMatrix(void)
@@ -1089,20 +1099,22 @@ void glLoadMatrixf(const GLfloat *m)
     switch (glparamstate.matrixmode) {
     case 0:
         gl_matrix_to_gx44(m, glparamstate.projection_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         gl_matrix_to_gx(m, glparamstate.modelview_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
             OgxTextureUnit *tu = active_tex_unit();
             gl_matrix_to_gx(m, tu->matrix[tu->matrix_index]);
         }
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         return;
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glMultMatrixd(const GLdouble *m)
@@ -1126,12 +1138,15 @@ void glMultMatrixf(const GLfloat *m)
         gl_matrix_to_gx44(m, mtx44);
         guMtx44Concat(glparamstate.projection_matrix, mtx44,
                       glparamstate.projection_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         break;
@@ -1141,7 +1156,6 @@ void glMultMatrixf(const GLfloat *m)
         gl_matrix_to_gx(m, mtx);
         guMtxConcat(*target, mtx, *target);
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glLoadIdentity()
@@ -1151,21 +1165,22 @@ void glLoadIdentity()
     switch (glparamstate.matrixmode) {
     case 0:
         guMtx44Identity(glparamstate.projection_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         guMtxIdentity(glparamstate.modelview_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
             OgxTextureUnit *tu = active_tex_unit();
             guMtxIdentity(tu->matrix[tu->matrix_index]);
         }
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         return;
     }
-
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glScalef(GLfloat x, GLfloat y, GLfloat z)
@@ -1179,12 +1194,15 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyScale(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         break;
@@ -1193,7 +1211,6 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
     if (target) {
         guMtxApplyScale(*target, *target, x, y, z);
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glTranslated(GLdouble x, GLdouble y, GLdouble z)
@@ -1212,12 +1229,15 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyTrans(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         break;
@@ -1226,7 +1246,6 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
     if (target) {
         guMtxApplyTrans(*target, *target, x, y, z);
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
@@ -1244,12 +1263,15 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         rot[3][0] = rot[3][1] = rot[3][2] = 0.0f;
         rot[3][3] = 1.0f;
         guMtx44Concat(glparamstate.projection_matrix, rot, glparamstate.projection_matrix);
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
+        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
+        glparamstate.dirty.bits.dirty_tev = 1;
         break;
     default:
         break;
@@ -1258,7 +1280,6 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
     if (target) {
         guMtxConcat(*target, rot, *target);
     }
-    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glClearColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
@@ -1376,6 +1397,7 @@ void glClear(GLbitfield mask)
     glparamstate.dirty.bits.dirty_z = 1;
     glparamstate.dirty.bits.dirty_color_update = 1;
     glparamstate.dirty.bits.dirty_matrices = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
     glparamstate.dirty.bits.dirty_cull = 1;
 
     glparamstate.draw_count++;
@@ -2068,6 +2090,8 @@ static void setup_fog()
 
 bool _ogx_setup_render_stages()
 {
+    if (!glparamstate.dirty.bits.dirty_tev) return true;
+
     u8 raster_output, raster_reg_index;
     if (glparamstate.texture_enabled) {
         raster_reg_index = _ogx_gpu_resources->tevreg_first++;
@@ -2231,6 +2255,7 @@ bool _ogx_setup_render_stages()
      * OgxGpuResources::{tevstage,texcoord}_first. */
     GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
     GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
+    glparamstate.dirty.bits.dirty_tev = false;
     return true;
 }
 
@@ -2252,8 +2277,7 @@ void _ogx_apply_state()
     }
 
     if (glparamstate.dirty.bits.dirty_alphatest ||
-        glparamstate.dirty.bits.dirty_stencil ||
-        glparamstate.dirty.bits.dirty_clip_planes) {
+        glparamstate.dirty.bits.dirty_tev) {
         u8 params[4] = { GX_ALWAYS, 0, GX_ALWAYS, 0 };
         int comparisons = 0;
         if (glparamstate.alphatest_enabled) {
@@ -2280,7 +2304,7 @@ void _ogx_apply_state()
         update_modelview_matrix();
         update_projection_matrix();
     }
-    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_lighting) {
+    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
         update_normal_matrix();
     }
 
@@ -2293,12 +2317,9 @@ void _ogx_apply_state()
      * to 0 because some states might still be dirty: for example, the stencil
      * checks alters the texture coordinate generation. */
     glparamstate.dirty.bits.dirty_cull = 0;
-    glparamstate.dirty.bits.dirty_lighting = 0;
     glparamstate.dirty.bits.dirty_matrices = 0;
-    glparamstate.dirty.bits.dirty_stencil = 0;
     glparamstate.dirty.bits.dirty_alphatest = 0;
     glparamstate.dirty.bits.dirty_blend = 0;
-    glparamstate.dirty.bits.dirty_clip_planes = 0;
     glparamstate.dirty.bits.dirty_color_update = 0;
     glparamstate.dirty.bits.dirty_z = 0;
 }

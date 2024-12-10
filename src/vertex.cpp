@@ -77,6 +77,7 @@ void set_current_color(T red, T green, T blue, T alpha = full_color<T>())
     }
 
     floatcpy(glparamstate.imm_mode.current_color, c, 4);
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 static inline void set_current_tex_unit_coords(int unit, float s, float t = 0)
@@ -302,6 +303,7 @@ void glNormal3fv(const GLfloat *v)
         HANDLE_CALL_LIST(NORMAL, v);
     }
     floatcpy(glparamstate.imm_mode.current_normal, v, 3);
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glNormal3iv(const GLint *v)

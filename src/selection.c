@@ -103,6 +103,7 @@ static void restore_z_buffer()
     GX_SetNumChans(0);
     GX_SetTevOp(GX_TEVSTAGE0, GX_REPLACE);
     GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
+    glparamstate.dirty.bits.dirty_tev = 1;
 
     GX_SetCullMode(GX_CULL_NONE);
     glparamstate.dirty.bits.dirty_cull = 1;
