@@ -212,6 +212,7 @@ void glTexGeni(GLenum coord, GLenum pname, GLint param)
         tu->gen_mode = param;
         break;
     }
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
@@ -221,7 +222,7 @@ void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
     switch (pname) {
     case GL_TEXTURE_GEN_MODE:
         glTexGeni(coord, pname, params[0]);
-        break;
+        return;
     case GL_EYE_PLANE:
         if (coord == GL_S) {
             floatcpy(tu->texture_eye_plane_s, params, 4);
@@ -237,6 +238,7 @@ void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
         }
         break;
     }
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexEnvf(GLenum target, GLenum pname, GLfloat param)
@@ -296,6 +298,7 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
         tu->mode = param;
         break;
     }
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params)
@@ -307,8 +310,9 @@ void glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params)
         break;
     default:
         glTexEnvf(target, pname, params[0]);
-        break;
+        return;
     }
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexEnviv(GLenum target, GLenum pname, const GLint *params)
@@ -394,6 +398,7 @@ static void update_texture(const void *data, int level, GLenum format, GLenum ty
     GX_InitTexObjLOD(obj, ti->min_filter, ti->mag_filter,
                      ti->minlevel, ti->maxlevel, 0, GX_ENABLE, GX_ENABLE, GX_ANISO_1);
     GX_InitTexObjUserData(obj, ti->ud.ptr);
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexImage2D(GLenum target, GLint level, GLint internalFormat, GLsizei width, GLsizei height,
@@ -519,6 +524,8 @@ void glBindTexture(GLenum target, GLuint texture)
      * defined yet. We do this when setting up the texturing TEV stage. */
     int unit = glparamstate.active_texture;
     glparamstate.texture_unit[unit].glcurtex = texture;
+
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void glTexImage3D(GLenum target, GLint level, GLint internalFormat,

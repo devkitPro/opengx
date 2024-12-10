@@ -72,6 +72,7 @@ static void draw_screen(GXTexObj *texture, float value)
     GX_SetNumChans(1);
     GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_VTX, GX_SRC_VTX,
                    0, GX_DF_NONE, GX_AF_NONE);
+    glparamstate.dirty.bits.dirty_tev = 1;
 
     GX_SetCullMode(GX_CULL_NONE);
     glparamstate.dirty.bits.dirty_cull = 1;

@@ -545,13 +545,13 @@ void _ogx_stencil_draw(OgxStencilDrawCallback callback, void *cb_data)
 void _ogx_stencil_enabled()
 {
     glparamstate.stencil.enabled = 1;
-    glparamstate.dirty.bits.dirty_stencil = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void _ogx_stencil_disabled()
 {
     glparamstate.stencil.enabled = 0;
-    glparamstate.dirty.bits.dirty_stencil = 1;
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void _ogx_stencil_update()
@@ -659,14 +659,17 @@ void glStencilFunc(GLenum func, GLint ref, GLuint mask)
         glparamstate.stencil.func = new_func;
         if (tev_stage_needed(new_type) && new_type != old_type)
             s_stencil_texture_needs_update = true;
+        glparamstate.dirty.bits.dirty_tev = 1;
     }
     if (new_ref != glparamstate.stencil.ref) {
         glparamstate.stencil.ref = new_ref;
         s_stencil_texture_needs_update = true;
+        glparamstate.dirty.bits.dirty_tev = 1;
     }
     if (new_mask != glparamstate.stencil.mask) {
         glparamstate.stencil.mask = new_mask;
         s_stencil_texture_needs_update = true;
+        glparamstate.dirty.bits.dirty_tev = 1;
     }
 }
 
