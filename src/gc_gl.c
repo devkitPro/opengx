@@ -183,6 +183,22 @@ static void setup_cull_mode()
     }
 }
 
+static void update_scissor()
+{
+    int *params, y;
+    if (glparamstate.scissor_enabled) {
+        params = glparamstate.scissor;
+        /* Take into account that OpenGL Y coordinates are inverted */
+        y = glparamstate.viewport[3] - (params[3] + params[1]);
+    } else {
+        params = glparamstate.viewport;
+        y = params[1];
+    }
+    GX_SetScissor(params[0], y, params[2], params[3]);
+
+    glparamstate.dirty.bits.dirty_scissor = 0;
+}
+
 int ogx_enable_double_buffering(int double_buffering)
 {
     int had_double_buffering = glparamstate.active_buffer == GL_BACK;
@@ -287,6 +303,11 @@ void ogx_initialize()
     glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+
+    glparamstate.scissor[0] = glparamstate.scissor[1] = 0;
+    /* Scissor width and height are initialized when a window is attached */
+    glparamstate.scissor[2] = glparamstate.scissor[3] = -1;
+    glparamstate.scissor_enabled = 0;
 
     glparamstate.imm_mode.current_color[0] = 1.0f; // Default imm data, could be wrong
     glparamstate.imm_mode.current_color[1] = 1.0f;
@@ -542,6 +563,10 @@ void glEnable(GLenum cap)
     HANDLE_CALL_LIST(ENABLE, cap);
 
     switch (cap) {
+    case GL_SCISSOR_TEST:
+        glparamstate.scissor_enabled = 1;
+        glparamstate.dirty.bits.dirty_scissor = 1;
+        break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
         glparamstate.dirty.bits.dirty_tev = 1;
@@ -619,6 +644,10 @@ void glDisable(GLenum cap)
     HANDLE_CALL_LIST(DISABLE, cap);
 
     switch (cap) {
+    case GL_SCISSOR_TEST:
+        glparamstate.scissor_enabled = 0;
+        glparamstate.dirty.bits.dirty_scissor = 1;
+        break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
         glparamstate.dirty.bits.dirty_tev = 1;
@@ -991,14 +1020,22 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
     glparamstate.viewport[2] = width;
     glparamstate.viewport[3] = height;
     GX_SetViewport(x, y, width, height, 0.0f, 1.0f);
-    GX_SetScissor(x, y, width, height);
+    if (glparamstate.scissor[2] < 0) {
+        glparamstate.scissor[2] = width;
+        glparamstate.scissor[3] = height;
+    }
+    glparamstate.dirty.bits.dirty_scissor = 1;
     _ogx_stencil_update();
     _ogx_efb_buffer_handle_resize(&s_efb_scene_buffer);
 }
 
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
 {
-    GX_SetScissor(x, y, width, height);
+    glparamstate.scissor[0] = x;
+    glparamstate.scissor[1] = y;
+    glparamstate.scissor[2] = width;
+    glparamstate.scissor[3] = height;
+    glparamstate.dirty.bits.dirty_scissor = 1;
 }
 
 void glMatrixMode(GLenum mode)
@@ -1305,6 +1342,12 @@ void glClear(GLbitfield mask)
     if (glparamstate.render_mode == GL_SELECT) {
         return;
     }
+
+    /* Since this function is typically called at the beginning of a frame, and
+     * the integration library might have draw something on the screen right
+     * before (typically, a mouse cursor), we assume the scissor to be dirty
+     * and reset it. */
+    update_scissor();
 
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
@@ -2311,6 +2354,10 @@ void _ogx_apply_state()
     if (glparamstate.dirty.bits.dirty_fog) {
         setup_fog();
         glparamstate.dirty.bits.dirty_fog = 0;
+    }
+
+    if (glparamstate.dirty.bits.dirty_scissor) {
+        update_scissor();
     }
 
     /* Reset the updated bits to 0. We don't unconditionally reset everything

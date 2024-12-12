@@ -136,6 +136,7 @@ typedef struct glparams_
     int cur_modv_mat, cur_proj_mat;
 
     int viewport[4];
+    int scissor[4];
 
     OgxHints hints;
 
@@ -147,6 +148,7 @@ typedef struct glparams_
     bool color_update;
     bool polygon_offset_fill;
     bool raster_pos_valid;
+    bool scissor_enabled;
     unsigned point_sprites_enabled : 1;
     unsigned point_sprites_coord_replace : 1;
     char active_texture;
@@ -243,6 +245,7 @@ typedef struct glparams_
             unsigned dirty_tev : 1;
             unsigned dirty_cull : 1;
             unsigned dirty_fog : 1;
+            unsigned dirty_scissor : 1;
         } bits;
         unsigned int all;
     } dirty;
