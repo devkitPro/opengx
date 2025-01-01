@@ -2,32 +2,23 @@ OpenGX
 ======
 
 OpenGX is an OpenGL-like wrapper which sits on GX subsystem. It implements the most common OpenGL calls such as immediate mode, texturing, array drawing (indexed and not indexed), matrix operations and basic lighting. It features some advanced stuff such as automatic texture compression (ARB extension) and mipmapping. Beware! Some parts are currently NOT opengl compilant (speaking strictly).
-TODO list
 
-  * Fix lighting transform (which is buggy) and implement spotlights (untested)
-  * Fix texture allocation. Now it's mandatory to allocate a texture name using glGen and you can't just bind the texture and use it
-  * Complete glGet call
-  * Add support for attribute push/pop
-  * Add support for glReadPixels and similar calls
+Current status
+--------------
 
-List of features (detailed but not exhaustive)
+OpenGX should be able to cover the needs of most OpenGL 1.5 applications. Features are implemented on a per need basis: if a feature is not implemented (or not implemented correctly) the most likely reason is that the OpenGX developers haven't yet encountered an application that they wanted to port that needed it. So, if a missing feature is blocking your adoption of OpenGX, please file an issue; for a faster resolution, providing some code through which the feature can be tested will undoubtedly help.
 
-  * Texture conversion/compression. Accepts RGB,RGBA,COMPRESSED_RGBA and LUMINANCE_ALPHA.
-  * Matrix math stuff including glu calls
-  * Texture mipmapping (and gluBuildMipMaps)
-  * Texture sub-images
-  * Texture coordinate generation
-  * Ambient and diffuse, emission and specular lighting
-  * Indexed and not indexed draw modes
-  * Blending support
-  * Alpha compare
-  * Call lists
-  * Fog
-  * Selection mode
+For a list of implemented functions, please refer to the `src/functions.c` file.
+
+TODO list:
+
+  * Implement spotlights
+  * Complete glGet calls
 
 There are several limitations on the implementation of many features, mostly
 due to the hardware. They are detailed in the PDF documentation, but feel free
 to file an issue if unsure.
+
 
 Design documentation
 --------------------
@@ -49,3 +40,14 @@ installed, build opengx as follows:
     make
     # Optional, to install it into devkitPro's portslib:
     sudo -E PATH=$PATH make install
+
+
+Running OpenGX applications in Dolphin
+--------------------------------------
+
+OpenGX makes use of some GX features which require changing specific Dolphin settings from their default values:
+
+- Graphics -> Hacks -> Texture Cache -> Accuracy: move it all towards "Safe"
+- Graphics -> Hacks -> Embedded Frame Buffer (EFB) -> Uncheck "Store EFB copies to texture only"
+- Graphics -> Hacks -> External Frame Buffer (XFB) -> Uncheck "Store XFB copies to texture only"
+- Graphics -> Hacks -> Other -> Uncheck "Disable Bounding Box"
