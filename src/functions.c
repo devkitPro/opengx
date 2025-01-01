@@ -154,7 +154,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glGenLists),
     //PROC(glGenQueries), /* OpenGL 1.5 */
     PROC(glGenTextures),
-    //PROC(glGetBooleanv),
+    PROC(glGetBooleanv),
     PROC(glGetBufferParameteriv), /* OpenGL 1.5 */
     PROC(glGetBufferPointerv), /* OpenGL 1.5 */
     PROC(glGetBufferSubData), /* OpenGL 1.5 */

@@ -73,6 +73,8 @@ GLboolean glIsEnabled(GLenum cap)
         return glparamstate.alphatest_enabled;
     case GL_BLEND:
         return glparamstate.blendenabled;
+    case GL_COLOR_ARRAY:
+        return glparamstate.cs.color_enabled;
     case GL_COLOR_MATERIAL:
         return glparamstate.lighting.color_material_enabled;
     case GL_CULL_FACE:
@@ -81,6 +83,8 @@ GLboolean glIsEnabled(GLenum cap)
         return glparamstate.ztest;
     case GL_FOG:
         return glparamstate.fog.enabled;
+    case GL_INDEX_ARRAY:
+        return glparamstate.cs.index_enabled;
     case GL_LIGHT0:
     case GL_LIGHT1:
     case GL_LIGHT2:
@@ -88,10 +92,23 @@ GLboolean glIsEnabled(GLenum cap)
         return glparamstate.lighting.lights[cap - GL_LIGHT0].enabled;
     case GL_LIGHTING:
         return glparamstate.lighting.enabled;
+    case GL_NORMAL_ARRAY:
+        return glparamstate.cs.normal_enabled;
+    case GL_POINT_SPRITE:
+        return glparamstate.point_sprites_enabled;
+    case GL_POLYGON_OFFSET_FILL:
+        return glparamstate.polygon_offset_fill;
+    case GL_SCISSOR_TEST:
+        return glparamstate.scissor_enabled;
     case GL_STENCIL_TEST:
         return glparamstate.stencil.enabled;
     case GL_TEXTURE_2D:
         return glparamstate.texture_enabled & (1 << glparamstate.active_texture);
+    case GL_TEXTURE_COORD_ARRAY:
+        {
+            int unit = glparamstate.cs.active_texture;
+            return glparamstate.cs.texcoord_enabled & (1 << unit);
+        }
     case GL_TEXTURE_GEN_S:
     case GL_TEXTURE_GEN_T:
     case GL_TEXTURE_GEN_R:
@@ -100,9 +117,87 @@ GLboolean glIsEnabled(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             return tu->gen_enabled & (1 << (cap - GL_TEXTURE_GEN_S));
         }
+    case GL_VERTEX_ARRAY:
+        return glparamstate.cs.vertex_enabled;
     default:
         return 0;
     }
+}
+
+void glGetBooleanv(GLenum pname, GLboolean *params)
+{
+    int num_params = 1;
+
+    switch (pname) {
+    case GL_ALPHA_TEST:
+    case GL_BLEND:
+    case GL_COLOR_ARRAY:
+    case GL_CULL_FACE:
+    case GL_DEPTH_TEST:
+    case GL_FOG:
+    case GL_INDEX_ARRAY:
+    case GL_LIGHTING:
+    case GL_LIGHT0:
+    case GL_LIGHT1:
+    case GL_LIGHT2:
+    case GL_LIGHT3:
+    case GL_LIGHT4:
+    case GL_LIGHT5:
+    case GL_LIGHT6:
+    case GL_LIGHT7:
+    case GL_NORMAL_ARRAY:
+    case GL_POINT_SPRITE:
+    case GL_POLYGON_OFFSET_FILL:
+    case GL_SCISSOR_TEST:
+    case GL_STENCIL_TEST:
+    case GL_TEXTURE_2D:
+    case GL_TEXTURE_COORD_ARRAY:
+    case GL_TEXTURE_GEN_S:
+    case GL_TEXTURE_GEN_T:
+    case GL_TEXTURE_GEN_R:
+    case GL_TEXTURE_GEN_Q:
+    case GL_VERTEX_ARRAY:
+        *params - glIsEnabled(pname);
+        return;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+        *params =
+            glparamstate.clip_plane_mask & (1 << (pname - GL_CLIP_PLANE0));
+        return;
+    case GL_CURRENT_RASTER_POSITION_VALID:
+        *params = glparamstate.raster_pos_valid ? GL_TRUE : GL_FALSE;
+        return;
+    case GL_INDEX_MODE:
+        *params = GL_FALSE;
+        return;
+    case GL_PACK_LSB_FIRST:
+        *params = glparamstate.pack_lsb_first;
+        return;
+    case GL_PACK_SWAP_BYTES:
+        *params = glparamstate.pack_swap_bytes;
+        break;
+    case GL_RGBA_MODE:
+        *params = GL_TRUE;
+        return;
+    case GL_STEREO:
+        *params = GL_FALSE;
+        return;
+    case GL_UNPACK_LSB_FIRST:
+        *params = glparamstate.unpack_lsb_first;
+        break;
+    case GL_UNPACK_SWAP_BYTES:
+        *params = glparamstate.unpack_swap_bytes;
+        return;
+    }
+
+    GLint p[4];
+    glGetIntegerv(pname, p);
+    for (int i = 0; i < num_params; i++)
+        params[i] = p[i];
 }
 
 void glGetDoublev(GLenum pname, GLdouble *params)
@@ -177,18 +272,6 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_AUX_BUFFERS:
         *params = 0;
         break;
-    case GL_CLIP_PLANE0:
-    case GL_CLIP_PLANE1:
-    case GL_CLIP_PLANE2:
-    case GL_CLIP_PLANE3:
-    case GL_CLIP_PLANE4:
-    case GL_CLIP_PLANE5:
-        *params =
-            glparamstate.clip_plane_mask & (1 << (pname - GL_CLIP_PLANE0));
-        return;
-    case GL_CURRENT_RASTER_POSITION_VALID:
-        *params = glparamstate.raster_pos_valid ? GL_TRUE : GL_FALSE;
-        break;
     case GL_DRAW_BUFFER:
     case GL_READ_BUFFER:
         *params = glparamstate.active_buffer;
@@ -225,12 +308,6 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_NAME_STACK_DEPTH:
         *params = glparamstate.name_stack_depth;
         return;
-    case GL_PACK_SWAP_BYTES:
-        *params = glparamstate.pack_swap_bytes;
-        break;
-    case GL_PACK_LSB_FIRST:
-        *params = glparamstate.pack_lsb_first;
-        break;
     case GL_PACK_ROW_LENGTH:
         *params = glparamstate.pack_row_length;
         break;
@@ -297,12 +374,6 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_STENCIL_WRITEMASK:
         *params = glparamstate.stencil.wmask;
         break;
-    case GL_UNPACK_SWAP_BYTES:
-        *params = glparamstate.unpack_swap_bytes;
-        break;
-    case GL_UNPACK_LSB_FIRST:
-        *params = glparamstate.unpack_lsb_first;
-        break;
     case GL_UNPACK_ROW_LENGTH:
         *params = glparamstate.unpack_row_length;
         break;
@@ -333,6 +404,23 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_ZOOM_Y:
         *params = glparamstate.pixel_zoom_y;
         break;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+    case GL_CURRENT_RASTER_POSITION_VALID:
+    case GL_PACK_LSB_FIRST:
+    case GL_PACK_SWAP_BYTES:
+    case GL_UNPACK_LSB_FIRST:
+    case GL_UNPACK_SWAP_BYTES:
+        {
+            GLboolean b;
+            glGetBooleanv(pname, &b);
+            *params = b;
+        }
+        return;
     default:
         return;
     };
