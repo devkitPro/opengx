@@ -198,6 +198,16 @@ void glTexParameteri(GLenum target, GLenum pname, GLint param)
     };
 }
 
+void glTexGend(GLenum coord, GLenum pname, GLdouble param)
+{
+    glTexGeni(coord, pname, param);
+}
+
+void glTexGenf(GLenum coord, GLenum pname, GLfloat param)
+{
+    glTexGeni(coord, pname, param);
+}
+
 void glTexGeni(GLenum coord, GLenum pname, GLint param)
 {
     /* Since in GX we cannot set different modes per texture coordinate, we
@@ -213,6 +223,21 @@ void glTexGeni(GLenum coord, GLenum pname, GLint param)
         break;
     }
     glparamstate.dirty.bits.dirty_tev = 1;
+}
+
+void glTexGendv(GLenum coord, GLenum pname, const GLdouble *params)
+{
+    GLfloat p[4];
+    int num_params = 1;
+    switch (pname) {
+    case GL_EYE_PLANE:
+    case GL_OBJECT_PLANE:
+        num_params = 4;
+        break;
+    }
+    for (int i = 0; i < num_params; i++)
+        p[i] = params[i];
+    glTexGenfv(coord, pname, p);
 }
 
 void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
@@ -239,6 +264,24 @@ void glTexGenfv(GLenum coord, GLenum pname, const GLfloat *params)
         break;
     }
     glparamstate.dirty.bits.dirty_tev = 1;
+}
+
+void glTexGeniv(GLenum coord, GLenum pname, const GLint *params)
+{
+    GLfloat p[4];
+    int num_params = 1;
+    switch (pname) {
+    case GL_EYE_PLANE:
+    case GL_OBJECT_PLANE:
+        num_params = 4;
+        break;
+    default:
+        glTexGeni(coord, pname, params[0]);
+        return;
+    }
+    for (int i = 0; i < num_params; i++)
+        p[i] = params[i];
+    glTexGenfv(coord, pname, p);
 }
 
 void glTexEnvf(GLenum target, GLenum pname, GLfloat param)
