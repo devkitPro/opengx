@@ -47,6 +47,12 @@ add_library(${TARGET} STATIC
     src/pixels.h
     src/raster.cpp
     src/selection.c
+    src/shader.c
+    src/shader.h
+    src/shader_api.c
+    src/shader_attribute.cpp
+    src/shader_functions.h
+    src/shader_uniform.c
     src/state.h
     src/stencil.c
     src/stencil.h

@@ -30,14 +30,13 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #define GL_GLEXT_PROTOTYPES 1
 #include "opengx.h"
+#include "shader.h"
 #include "types.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 int _ogx_functions_c = 0; /* referenced by gc_gl.c, see the comment in there */
-
-OgxFunctions _ogx_shader_functions __attribute__((weak)) = { 0, NULL };
 
 #define PROC(name) { #name, name }
 static const OgxProcMap s_proc_map[] = {
@@ -177,6 +176,7 @@ static const OgxProcMap s_proc_map[] = {
     //PROC(glGetQueryObjectuiv), /* OpenGL 1.5 */
     //PROC(glGetQueryiv), /* OpenGL 1.5 */
     PROC(glGetString),
+    PROC(glGetStringi), /* OpenGL 3.0 */
     //PROC(glGetTexEnvfv),
     //PROC(glGetTexEnviv),
     //PROC(glGetTexGendv),
