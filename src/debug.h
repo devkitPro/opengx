@@ -43,6 +43,7 @@ typedef enum {
     OGX_LOG_TEXTURE = 1 << 3,
     OGX_LOG_STENCIL = 1 << 4,
     OGX_LOG_CLIPPING = 1 << 5,
+    OGX_LOG_SHADER = 1 << 6,
 } OgxLogMask;
 
 extern OgxLogMask _ogx_log_mask;

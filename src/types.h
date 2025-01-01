@@ -35,11 +35,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <GL/gl.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define MAX_VERTEX_ATTRIBS 16
 
 /* Now we support as much as 255 VBOs, but, should we support more, we'll need
  * to use a larger type for the index. */
@@ -48,9 +51,11 @@ typedef uint8_t VboType;
 typedef float Pos3f[3];
 typedef float Norm3f[3];
 typedef float Tex2f[2];
+typedef float Vec4f[4];
 
 typedef struct _OgxVertexAttribArray {
-    uint8_t size; /* max is 4, using a bitfield might be an option */
+    unsigned normalized : 1;
+    unsigned size : 3; /* max is 4 */
     uint8_t stride;
     GLenum type;
     const void *pointer;
@@ -65,6 +70,11 @@ typedef struct {
     size_t num_functions;
     const OgxProcMap *functions;
 } OgxFunctions;
+
+typedef struct _OgxProgram OgxProgram;
+typedef struct _OgxShader OgxShader;
+typedef struct _OgxDrawData OgxDrawData;
+typedef struct _OgxDrawMode OgxDrawMode;
 
 #ifdef __cplusplus
 } // extern C

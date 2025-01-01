@@ -53,6 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "gpu_resources.h"
 #include "opengx.h"
 #include "selection.h"
+#include "shader.h"
 #include "state.h"
 #include "stencil.h"
 #include "texture_gen_sw.h"
@@ -91,6 +92,7 @@ static bool s_point_sprites_was_enabled = false;
 extern int _ogx_functions_c;
 void *_ogx_force_proctable = &_ogx_functions_c;
 
+typedef void (*ProcessVertex)(int index);
 
 static inline void update_modelview_matrix()
 {
@@ -122,7 +124,7 @@ static void get_projection_info(const Mtx44 matrix, u8 *type, float *near, float
     }
 }
 
-void ogx_set_projection(const Mtx44 matrix)
+void ogx_set_projection_gx(const Mtx44 matrix)
 {
     /* OpenGL's projection matrix transform the scene into a clip space where
      * all the coordinates lie in the range [-1, 1]. Nintendo's GX, however,
@@ -152,7 +154,7 @@ void ogx_set_projection(const Mtx44 matrix)
 
 static inline void update_projection_matrix()
 {
-    ogx_set_projection(glparamstate.projection_matrix);
+    ogx_set_projection_gx(glparamstate.projection_matrix);
 }
 
 static inline void update_normal_matrix()
@@ -449,6 +451,8 @@ void ogx_initialize()
 
     glparamstate.active_buffer = GL_BACK;
 
+    glparamstate.current_program = 0;
+
     glparamstate.error = GL_NO_ERROR;
     glparamstate.draw_count = 0;
 
@@ -472,6 +476,8 @@ void ogx_initialize()
 
     /* Bind default texture */
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    _ogx_shader_initialize();
 }
 
 void _ogx_setup_2D_projection()
@@ -2094,10 +2100,9 @@ static inline bool point_sprites_changed(uint8_t gxmode)
     }
 }
 
-void _ogx_update_vertex_array_readers(OgxDrawMode mode)
+/* "fp" stands for "fixed pipeline" */
+void _ogx_fp_update_vertex_array_readers(OgxDrawMode mode)
 {
-    _ogx_arrays_reset();
-
     if (glparamstate.cs.vertex_enabled) {
         _ogx_array_add(GX_VA_POS, &STATE_ARRAY(POS));
     }
@@ -2141,6 +2146,17 @@ void _ogx_update_vertex_array_readers(OgxDrawMode mode)
         } else {
             tu->array_reader = NULL;
         }
+    }
+}
+
+void _ogx_update_vertex_array_readers(OgxDrawMode mode)
+{
+    _ogx_arrays_reset();
+
+    if (glparamstate.current_program) {
+        _ogx_shader_update_vertex_array_readers(mode);
+    } else {
+        _ogx_fp_update_vertex_array_readers(mode);
     }
 
     glparamstate.dirty.bits.dirty_attributes = 0;
@@ -2417,6 +2433,20 @@ bool _ogx_setup_render_stages()
     return true;
 }
 
+static inline void apply_state_fixed_pipeline()
+{
+    // Matrix stuff
+    if (glparamstate.dirty.bits.dirty_matrices) {
+        update_modelview_matrix();
+        update_projection_matrix();
+    }
+    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
+        update_normal_matrix();
+    }
+
+    glparamstate.dirty.bits.dirty_matrices = 0;
+}
+
 void _ogx_apply_state()
 {
     // Set up the OGL state to GX state
@@ -2457,15 +2487,8 @@ void _ogx_apply_state()
         setup_cull_mode();
     }
 
-    // Matrix stuff
-    if (glparamstate.dirty.bits.dirty_matrices) {
-        update_modelview_matrix();
-        update_projection_matrix();
-    }
-    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
-        update_normal_matrix();
-    }
-
+    /* Though glFog*() functions can be replaced by shaders, the OpenGL spec
+     * allows them to be used even when shaders are active. */
     if (glparamstate.dirty.bits.dirty_fog) {
         setup_fog();
         glparamstate.dirty.bits.dirty_fog = 0;
@@ -2475,11 +2498,14 @@ void _ogx_apply_state()
         update_scissor();
     }
 
+    if (!glparamstate.current_program) {
+        apply_state_fixed_pipeline();
+    }
+
     /* Reset the updated bits to 0. We don't unconditionally reset everything
      * to 0 because some states might still be dirty: for example, the stencil
      * checks alters the texture coordinate generation. */
     glparamstate.dirty.bits.dirty_cull = 0;
-    glparamstate.dirty.bits.dirty_matrices = 0;
     glparamstate.dirty.bits.dirty_alphatest = 0;
     glparamstate.dirty.bits.dirty_blend = 0;
     glparamstate.dirty.bits.dirty_color_update = 0;
@@ -2587,13 +2613,17 @@ static bool setup_draw(const OgxDrawData *draw_data)
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
-    _ogx_arrays_setup_draw(draw_data, OGX_DRAW_FLAG_NONE);
+    if (!glparamstate.current_program) {
+        _ogx_arrays_setup_draw(draw_data, OGX_DRAW_FLAG_NONE);
 
-    /* Note that _ogx_setup_render_stages() uses some information from the
-     * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
-     * after it. */
-    bool should_draw = _ogx_setup_render_stages();
-    if (!should_draw) return false;
+        /* Note that _ogx_setup_render_stages() uses some information from the
+         * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
+         * after it. */
+        bool should_draw = _ogx_setup_render_stages();
+        if (!should_draw) return false;
+    } else {
+        _ogx_shader_setup_draw(draw_data);
+    }
     _ogx_apply_state();
     return true;
 }

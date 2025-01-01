@@ -338,6 +338,9 @@ typedef struct glparams_
         uint8_t execution_depth;
     } current_call_list;
 
+    GLuint current_program;
+
+    bool compat_profile;
     GLenum error;
 } glparams_;
 
