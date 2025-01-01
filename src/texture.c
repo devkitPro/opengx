@@ -198,6 +198,18 @@ void glTexParameteri(GLenum target, GLenum pname, GLint param)
     };
 }
 
+void glTexParameterfv(GLenum target, GLenum pname, const GLfloat *params)
+{
+    /* All supported pname's only take a single param */
+    glTexParameterf(target, pname, params[0]);
+}
+
+void glTexParameteriv(GLenum target, GLenum pname, const GLint *params)
+{
+    /* All supported pname's only take a single param */
+    glTexParameteri(target, pname, params[0]);
+}
+
 void glTexGend(GLenum coord, GLenum pname, GLdouble param)
 {
     glTexGeni(coord, pname, param);
