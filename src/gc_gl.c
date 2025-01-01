@@ -1250,6 +1250,11 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
     }
 }
 
+void glScaled(GLdouble x, GLdouble y, GLdouble z)
+{
+    glScalef(x, y, z);
+}
+
 void glTranslated(GLdouble x, GLdouble y, GLdouble z)
 {
     glTranslatef(x, y, z);
@@ -1317,6 +1322,11 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
     if (target) {
         guMtxConcat(*target, rot, *target);
     }
+}
+
+void glRotated(GLdouble angle, GLdouble x, GLdouble y, GLdouble z)
+{
+    glRotatef(angle, x, y, z);
 }
 
 void glClearColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
