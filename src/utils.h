@@ -323,13 +323,7 @@ static inline GLenum gl_compare_from_gx(uint8_t func)
     }
 }
 
-typedef struct
-{
-    uint8_t mode;
-    bool loop;
-} DrawMode;
-
-DrawMode _ogx_draw_mode(GLenum mode);
+OgxDrawMode _ogx_draw_mode(GLenum mode);
 
 /* Set up the matrices for 2D pixel-perfect drawing */
 void _ogx_setup_2D_projection(void);

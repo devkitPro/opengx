@@ -2040,9 +2040,9 @@ static LightMasks prepare_lighting()
     return masks;
 }
 
-DrawMode _ogx_draw_mode(GLenum mode)
+OgxDrawMode _ogx_draw_mode(GLenum mode)
 {
-    DrawMode dm = { 0xff, false };
+    OgxDrawMode dm = { 0xff, false };
 
     if (glparamstate.polygon_mode != GL_FILL) {
         if (glparamstate.polygon_mode == GL_POINT) {
@@ -2380,19 +2380,15 @@ void _ogx_apply_state()
     glparamstate.dirty.bits.dirty_z = 0;
 }
 
-typedef struct {
-    DrawMode gxmode;
-    GLint first;
-    GLsizei count;
-} OgxDrawData;
-
-static void draw_arrays_general(DrawMode gxmode, int first, int count)
+static void draw_arrays_general(const OgxDrawData *draw_data)
 {
+    GLsizei count = draw_data->count;
+    GLsizei first = draw_data->first;
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
-    bool loop = gxmode.loop;
-    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
+    bool loop = draw_data->gxmode.loop;
+    GX_Begin(draw_data->gxmode.mode, GX_VTXFMT0, count + loop);
     int i;
     for (i = 0; i < count + loop; i++) {
         int j = i % count + first;
@@ -2405,18 +2401,20 @@ static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data->gxmode.mode,
+    _ogx_arrays_setup_draw(data,
                            false, /* no normals */
                            false, /* no color */
                            false /* no texturing */);
     /* TODO: we could use C++ templates here too, to build more effective
      * drawing functions that only process the data we need. */
-    draw_arrays_general(data->gxmode, data->first, data->count);
+    draw_arrays_general(data);
 }
 
-static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
-                                  const GLvoid *indices)
+static void draw_elements_general(const OgxDrawData *draw_data)
 {
+    const GLvoid *indices = draw_data->indices;
+    GLsizei count = draw_data->count;
+
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
@@ -2425,34 +2423,25 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
                                     indices);
     }
 
-    bool loop = gxmode.loop;
-    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
+    bool loop = draw_data->gxmode.loop;
+    GX_Begin(draw_data->gxmode.mode, GX_VTXFMT0, count + loop);
     for (int i = 0; i < count + loop; i++) {
-        int index = read_index(indices, type, i % count);
+        int index = read_index(indices, draw_data->type, i % count);
         _ogx_arrays_process_element(index);
     }
     GX_End();
 }
 
-typedef struct {
-    DrawMode gxmode;
-    GLsizei count;
-    GLenum type;
-    const GLvoid *indices;
-} OgxDrawElementsData;
-
 static void flat_draw_elements(void *cb_data)
 {
-    OgxDrawElementsData *data = cb_data;
+    OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data->gxmode.mode,
+    _ogx_arrays_setup_draw(data,
                            false, /* no normals */
                            false, /* no color */
                            false /* no texturing */);
 
-    /* TODO: we could use C++ templates here too, to build more effective
-     * drawing functions that only process the data we need. */
-    draw_elements_general(data->gxmode, data->count, data->type, data->indices);
+    draw_elements_general(data);
 }
 
 void glArrayElement(GLint i)
@@ -2483,7 +2472,7 @@ void glArrayElement(GLint i)
     }
 }
 
-static bool setup_draw(uint8_t gxmode)
+static bool setup_draw(const OgxDrawData *draw_data)
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
@@ -2496,7 +2485,7 @@ static bool setup_draw(uint8_t gxmode)
         else
             color_provide = 1;
     }
-    _ogx_arrays_setup_draw(gxmode,
+    _ogx_arrays_setup_draw(draw_data,
                            glparamstate.cs.normal_enabled, color_provide, texen);
 
     /* Note that _ogx_setup_render_stages() uses some information from the
@@ -2510,7 +2499,7 @@ static bool setup_draw(uint8_t gxmode)
 
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
@@ -2519,18 +2508,18 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    OgxDrawData draw_data = { gxmode, count, first, };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
-        OgxDrawData draw_data = { gxmode, first, count };
         _ogx_stencil_draw(flat_draw_geometry, &draw_data);
         _ogx_gpu_resources_pop();
     }
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw(gxmode.mode);
+    bool should_draw = setup_draw(&draw_data);
     if (should_draw) {
-        draw_arrays_general(gxmode, first, count);
+        draw_arrays_general(&draw_data);
         glparamstate.draw_count++;
     }
     _ogx_arrays_draw_done();
@@ -2540,7 +2529,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
 {
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
@@ -2549,18 +2538,18 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    OgxDrawData draw_data = { gxmode, count, 0, type, indices };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
-        OgxDrawElementsData draw_data = { gxmode, count, type, indices };
         _ogx_stencil_draw(flat_draw_elements, &draw_data);
         _ogx_gpu_resources_pop();
     }
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw(gxmode.mode);
+    bool should_draw = setup_draw(&draw_data);
     if (should_draw) {
-        draw_elements_general(gxmode, count, type, indices);
+        draw_elements_general(&draw_data);
         glparamstate.draw_count++;
     }
     _ogx_arrays_draw_done();

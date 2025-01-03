@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "debug.h"
 #include "efb.h"
 #include "gpu_resources.h"
+#include "opengx.h"
 #include "stencil.h"
 #include "utils.h"
 
@@ -224,8 +225,13 @@ static void setup_draw_geometry(struct DrawGeometry *dg,
         }
     }
 
-    DrawMode gxmode = _ogx_draw_mode(dg->mode);
-    _ogx_arrays_setup_draw(gxmode.mode,
+    OgxDrawMode gxmode = _ogx_draw_mode(dg->mode);
+    OgxDrawData draw_data = {
+        gxmode,
+        dg->count,
+        /* The remaining fields are not used when drawing through lists */
+    };
+    _ogx_arrays_setup_draw(&draw_data,
                            dg->cs.normal_enabled,
                            dg->cs.color_enabled ? 2 : 0,
                            dg->cs.texcoord_enabled);
@@ -283,7 +289,7 @@ static void run_draw_geometry(struct DrawGeometry *dg)
 
     /* Update the drawing mode on the list. This required peeping into
      * GX_Begin() code. */
-    DrawMode gxmode = _ogx_draw_mode(dg->mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(dg->mode);
     u8 *fifo_ptr = dg->gxlist;
     u8 mode_opcode = gxmode.mode | (GX_VTXFMT0 & 0x7);
     if (*fifo_ptr != mode_opcode) {
@@ -424,7 +430,7 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     dg->gxlist = memalign(32, MAX_GXLIST_SIZE);
     DCInvalidateRange(dg->gxlist, MAX_GXLIST_SIZE);
     dg->cs = glparamstate.cs;
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     dg->count = count + gxmode.loop;
 
     if (dg->cs.color_enabled) {

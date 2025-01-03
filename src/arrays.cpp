@@ -568,7 +568,7 @@ static inline VertexReaderBase *get_reader(OgxArrayReader *reader)
     return reinterpret_cast<VertexReaderBase *>(reader);
 }
 
-void _ogx_arrays_setup_draw(uint8_t gxmode,
+void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
                             bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask)
 {
@@ -596,7 +596,7 @@ void _ogx_arrays_setup_draw(uint8_t gxmode,
             VertexReaderBase *r = get_reader(&glparamstate.texcoord_array[i]);
             u8 unit_bit = 1 << i;
 
-            if (gxmode == GX_POINTS &&
+            if (draw_data->gxmode.mode == GX_POINTS &&
                 glparamstate.point_sprites_enabled &&
                 glparamstate.point_sprites_coord_replace) {
                 if (tex_unit_mask & unit_bit) {

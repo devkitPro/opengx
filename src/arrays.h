@@ -31,6 +31,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef OPENGX_ARRAYS_H
 #define OPENGX_ARRAYS_H
 
+#include "opengx.h"
+
 #include <GL/gl.h>
 #include <gccore.h>
 #include <stdint.h>
@@ -48,7 +50,7 @@ void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
                             const void *data,
                             int num_components, GLenum type, int stride);
-void _ogx_arrays_setup_draw(uint8_t gxmode,
+void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
                             bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask);
 /* Get the mask of units having texture coordinates. This is not necessarily
