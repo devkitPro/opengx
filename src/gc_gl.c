@@ -89,7 +89,6 @@ static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
 extern int _ogx_functions_c;
 void *_ogx_force_proctable = &_ogx_functions_c;
 
-static void draw_arrays_general(DrawMode gxmode, int first, int count);
 
 static inline void update_modelview_matrix()
 {
@@ -2387,6 +2386,21 @@ typedef struct {
     GLsizei count;
 } OgxDrawData;
 
+static void draw_arrays_general(DrawMode gxmode, int first, int count)
+{
+    // Invalidate vertex data as may have been modified by the user
+    GX_InvVtxCache();
+
+    bool loop = gxmode.loop;
+    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
+    int i;
+    for (i = 0; i < count + loop; i++) {
+        int j = i % count + first;
+        _ogx_arrays_process_element(j);
+    }
+    GX_End();
+}
+
 static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
@@ -2552,21 +2566,6 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     _ogx_arrays_draw_done();
 
     _ogx_gpu_resources_pop();
-}
-
-static void draw_arrays_general(DrawMode gxmode, int first, int count)
-{
-    // Invalidate vertex data as may have been modified by the user
-    GX_InvVtxCache();
-
-    bool loop = gxmode.loop;
-    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
-    int i;
-    for (i = 0; i < count + loop; i++) {
-        int j = i % count + first;
-        _ogx_arrays_process_element(j);
-    }
-    GX_End();
 }
 
 void glFrustum(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top,
