@@ -56,6 +56,16 @@ typedef struct _OgxVertexAttribArray {
     const void *pointer;
 } OgxVertexAttribArray;
 
+typedef struct {
+    const char *name;
+    void *address;
+} OgxProcMap;
+
+typedef struct {
+    size_t num_functions;
+    const OgxProcMap *functions;
+} OgxFunctions;
+
 #ifdef __cplusplus
 } // extern C
 #endif

@@ -30,19 +30,17 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #define GL_GLEXT_PROTOTYPES 1
 #include "opengx.h"
+#include "types.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct {
-    const char *name;
-    void *address;
-} ProcMap;
-
 int _ogx_functions_c = 0; /* referenced by gc_gl.c, see the comment in there */
 
+OgxFunctions _ogx_shader_functions __attribute__((weak)) = { 0, NULL };
+
 #define PROC(name) { #name, name }
-static const ProcMap s_proc_map[] = {
+static const OgxProcMap s_proc_map[] = {
     PROC(glAccum),
     PROC(glActiveTexture), /* OpenGL 1.3 */
     PROC(glAlphaFunc),
@@ -438,9 +436,18 @@ static const ProcMap s_proc_map[] = {
 
 static int compare_proc(const void *a_ptr, const void *b_ptr)
 {
-    const ProcMap *a = a_ptr;
-    const ProcMap *b = b_ptr;
+    const OgxProcMap *a = a_ptr;
+    const OgxProcMap *b = b_ptr;
     return strcmp(a->name, b->name);
+}
+
+static void *search_in_functions(const OgxProcMap *functions, size_t count,
+                                 const char *proc)
+{
+    OgxProcMap search = { proc, NULL };
+    OgxProcMap *elem = bsearch(&search, functions, count, sizeof(OgxProcMap),
+                               compare_proc);
+    return elem ? elem->address : NULL;
 }
 
 void *ogx_get_proc_address(const char *proc)
@@ -456,8 +463,12 @@ void *ogx_get_proc_address(const char *proc)
         proc = buffer;
     }
 
-    ProcMap search = { proc, NULL };
-    ProcMap *elem = bsearch(&search, s_proc_map, NUM_PROCS, sizeof(ProcMap),
-                            compare_proc);
-    return elem ? elem->address : NULL;
+    void *ret = NULL;
+    if (_ogx_shader_functions.num_functions > 0) {
+        ret = search_in_functions(_ogx_shader_functions.functions,
+                                  _ogx_shader_functions.num_functions,
+                                  proc);
+        if (ret) return ret;
+    }
+    return search_in_functions(s_proc_map, NUM_PROCS, proc);
 }
