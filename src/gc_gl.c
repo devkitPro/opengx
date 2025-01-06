@@ -98,14 +98,14 @@ static inline void update_modelview_matrix()
 
 /* Deduce the projection type (perspective vs orthogonal) and the values of the
  * near and far clipping plane from the projection matrix. */
-static void get_projection_info(u8 *type, float *near, float *far)
+static void get_projection_info(const Mtx44 matrix, u8 *type, float *near, float *far)
 {
     float A, B;
 
-    A = glparamstate.projection_matrix[2][2];
-    B = glparamstate.projection_matrix[2][3];
+    A = matrix[2][2];
+    B = matrix[2][3];
 
-    if (glparamstate.projection_matrix[3][3] == 0) {
+    if (matrix[3][3] == 0) {
         *type = GX_PERSPECTIVE;
         *near = B / (A - 1.0f);
         if (A != -1.0f) {
@@ -120,7 +120,7 @@ static void get_projection_info(u8 *type, float *near, float *far)
     }
 }
 
-static inline void update_projection_matrix()
+void ogx_set_projection(const Mtx44 matrix)
 {
     /* OpenGL's projection matrix transform the scene into a clip space where
      * all the coordinates lie in the range [-1, 1]. Nintendo's GX, however,
@@ -132,21 +132,25 @@ static inline void update_projection_matrix()
     Mtx44 proj;
     u8 type;
     float near, far;
-    get_projection_info(&type, &near, &far);
-    memcpy(proj, glparamstate.projection_matrix, sizeof(Mtx44));
+    get_projection_info(matrix, &type, &near, &far);
+    memcpy(proj, matrix, sizeof(Mtx44));
     float tmp = 1.0f / (far - near);
     /* TODO: also use the polygon_offset_factor variable */
     float zoffset = glparamstate.polygon_offset_fill ?
         (glparamstate.polygon_offset_units * 0.00001f) : 0.0;
-    if (glparamstate.projection_matrix[3][3] != 0) {
+    if (type == GX_ORTHOGRAPHIC) {
         proj[2][2] = -tmp;
         proj[2][3] = -far * tmp + zoffset;
-        GX_LoadProjectionMtx(proj, GX_ORTHOGRAPHIC);
     } else {
         proj[2][2] = -near * tmp;
         proj[2][3] = -near * far * tmp + zoffset;
-        GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
     }
+    GX_LoadProjectionMtx(proj, type);
+}
+
+static inline void update_projection_matrix()
+{
+    ogx_set_projection(glparamstate.projection_matrix);
 }
 
 static inline void update_normal_matrix()
@@ -2150,7 +2154,7 @@ static void setup_fog()
      */
 
     if (glparamstate.fog.enabled) {
-        get_projection_info(&proj_type, &near, &far);
+        get_projection_info(glparamstate.projection_matrix, &proj_type, &near, &far);
 
         color = gxcol_new_fv(glparamstate.fog.color);
         switch (glparamstate.fog.mode) {
