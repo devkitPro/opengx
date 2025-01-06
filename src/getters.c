@@ -55,7 +55,7 @@ const GLubyte *glGetString(GLenum name)
     case GL_RENDERER:
         return "libogc";
     case GL_VERSION:
-        return "1.1";
+        return ogx_get_proc_address("glUseProgram") ? "2.0" : "1.5";
     case GL_EXTENSIONS:
         return
             "GL_ARB_multitexture "
