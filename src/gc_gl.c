@@ -2447,7 +2447,7 @@ static void flat_draw_elements(void *cb_data)
 void glArrayElement(GLint i)
 {
     float value[3];
-    if (glparamstate.imm_mode.in_gl_begin && glparamstate.cs.vertex_enabled) {
+    if (glparamstate.cs.vertex_enabled) {
         _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, i, value);
         glVertex3fv(value);
     }
