@@ -472,7 +472,7 @@ struct CoordVertexReader: public GenericVertexReader<T> {
             GX_Position3f32(x, y, z);
         } else {
             for (int i = 0; i < format.num_components; i++, ptr++) {
-                wgPipe->F32 = float(*ptr++);
+                wgPipe->F32 = float(*ptr);
             }
         }
     }
