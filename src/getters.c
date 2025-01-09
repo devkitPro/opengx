@@ -266,6 +266,15 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_CLIENT_ACTIVE_TEXTURE:
         *params = GL_TEXTURE0 + glparamstate.cs.active_texture;
         break;
+    case GL_COLOR_ARRAY_SIZE:
+        *params = glparamstate.color_array.size;
+        return;
+    case GL_COLOR_ARRAY_STRIDE:
+        *params = glparamstate.color_array.stride;
+        return;
+    case GL_COLOR_ARRAY_TYPE:
+        *params = glparamstate.color_array.type;
+        return;
     case GL_ELEMENT_ARRAY_BUFFER_BINDING:
         *params = glparamstate.bound_vbo_element_array;
         break;
@@ -307,6 +316,12 @@ void glGetIntegerv(GLenum pname, GLint *params)
         break;
     case GL_NAME_STACK_DEPTH:
         *params = glparamstate.name_stack_depth;
+        return;
+    case GL_NORMAL_ARRAY_STRIDE:
+        *params = glparamstate.normal_array.stride;
+        return;
+    case GL_NORMAL_ARRAY_TYPE:
+        *params = glparamstate.normal_array.type;
         return;
     case GL_PACK_ROW_LENGTH:
         *params = glparamstate.pack_row_length;
@@ -374,6 +389,24 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_STENCIL_WRITEMASK:
         *params = glparamstate.stencil.wmask;
         break;
+    case GL_TEXTURE_COORD_ARRAY_SIZE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = glparamstate.texcoord_array[unit].size;
+        }
+        return;
+    case GL_TEXTURE_COORD_ARRAY_STRIDE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = glparamstate.texcoord_array[unit].stride;
+        }
+        return;
+    case GL_TEXTURE_COORD_ARRAY_TYPE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = glparamstate.texcoord_array[unit].type;
+        }
+        return;
     case GL_UNPACK_ROW_LENGTH:
         *params = glparamstate.unpack_row_length;
         break;
@@ -392,6 +425,15 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_UNPACK_ALIGNMENT:
         *params = glparamstate.unpack_alignment;
         break;
+    case GL_VERTEX_ARRAY_SIZE:
+        *params = glparamstate.vertex_array.size;
+        return;
+    case GL_VERTEX_ARRAY_STRIDE:
+        *params = glparamstate.vertex_array.stride;
+        return;
+    case GL_VERTEX_ARRAY_TYPE:
+        *params = glparamstate.vertex_array.type;
+        return;
     case GL_VIEWPORT:
         memcpy(params, glparamstate.viewport, 4 * sizeof(int));
         return;
@@ -426,3 +468,23 @@ void glGetIntegerv(GLenum pname, GLint *params)
     };
 }
 
+void glGetPointerv(GLenum pname, GLvoid **params)
+{
+    switch (pname) {
+    case GL_COLOR_ARRAY_POINTER:
+        *params = (void*)glparamstate.color_array.pointer;
+        return;
+    case GL_NORMAL_ARRAY_POINTER:
+        *params = (void*)glparamstate.normal_array.pointer;
+        return;
+    case GL_TEXTURE_COORD_ARRAY_POINTER:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = (void*)glparamstate.texcoord_array[unit].pointer;
+        }
+        return;
+    case GL_VERTEX_ARRAY_POINTER:
+        *params = (void*)glparamstate.vertex_array.pointer;
+        return;
+    }
+}

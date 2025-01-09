@@ -173,7 +173,7 @@ static const ProcMap s_proc_map[] = {
     PROC(glGetPixelMapfv),
     PROC(glGetPixelMapuiv),
     PROC(glGetPixelMapusv),
-    //PROC(glGetPointerv),
+    PROC(glGetPointerv),
     //PROC(glGetPolygonStipple),
     //PROC(glGetQueryObjectiv), /* OpenGL 1.5 */
     //PROC(glGetQueryObjectuiv), /* OpenGL 1.5 */
