@@ -181,8 +181,14 @@ typedef struct glparams_
     uint16_t hit_count;
 
     void *index_array;
-    OgxArrayReader vertex_array, normal_array, color_array;
-    OgxArrayReader texcoord_array[MAX_TEXTURE_UNITS];
+    OgxVertexAttribArray vertex_array, normal_array, color_array;
+    OgxVertexAttribArray texcoord_array[MAX_TEXTURE_UNITS];
+    /* The OgxArrayReader are not really part of the state (the
+     * OgxVertexAttribArray elements carry the authoritative information on the
+     * vertex attribute arrays), they are meant to be used as a cache for the
+     * drawing operations. */
+    OgxArrayReader vertex_reader, normal_reader, color_reader;
+    OgxArrayReader texcoord_reader[MAX_TEXTURE_UNITS];
     union client_state
     {
         struct {
@@ -246,6 +252,7 @@ typedef struct glparams_
             unsigned dirty_cull : 1;
             unsigned dirty_fog : 1;
             unsigned dirty_scissor : 1;
+            unsigned dirty_attributes : 1;
         } bits;
         unsigned int all;
     } dirty;

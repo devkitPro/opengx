@@ -433,8 +433,11 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     OgxDrawMode gxmode = _ogx_draw_mode(mode);
     dg->count = count + gxmode.loop;
 
+    if (glparamstate.dirty.bits.dirty_attributes)
+        _ogx_update_vertex_array_readers();
+
     if (dg->cs.color_enabled) {
-        _ogx_array_reader_enable_dup_color(&glparamstate.color_array, true);
+        _ogx_array_reader_enable_dup_color(&glparamstate.color_reader, true);
     }
 
     GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
@@ -445,16 +448,16 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     for (int i = 0; i < dg->count; i++) {
         int index = index_cb(i % count, index_data);
         float value[4];
-        _ogx_array_reader_process_element(&glparamstate.vertex_array, index);
+        _ogx_array_reader_process_element(&glparamstate.vertex_reader, index);
 
         if (dg->cs.normal_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.normal_array, index);
+            _ogx_array_reader_process_element(&glparamstate.normal_reader, index);
         } else {
             GX_Normal1x8(0);
         }
 
         if (dg->cs.color_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.color_array, index);
+            _ogx_array_reader_process_element(&glparamstate.color_reader, index);
         } else {
             GX_Color1x8(0); // CLR0
             GX_Color1x8(0); // CLR1
@@ -463,7 +466,7 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
         for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
             if (dg->cs.texcoord_enabled & (1 << tex)) {
                 _ogx_array_reader_process_element(
-                    &glparamstate.texcoord_array[tex], index);
+                    &glparamstate.texcoord_reader[tex], index);
             }
         }
     }

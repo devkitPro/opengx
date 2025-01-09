@@ -987,29 +987,41 @@ void glEnd()
     union client_state cs_backup = glparamstate.cs;
     VertexData *base = glparamstate.imm_mode.current_vertices;
     int stride = sizeof(VertexData);
+    OgxVertexAttribArray array;
+    array.size = 2;
+    array.type = GL_FLOAT;
+    array.stride = stride;
     for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
         if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
-            _ogx_array_reader_init(&glparamstate.texcoord_array[i],
-                                   GX_VA_TEX0 + i,
-                                   base->tex[i], 2, GL_FLOAT, stride);
+            array.pointer = base->tex[i];
+            _ogx_array_reader_init(&glparamstate.texcoord_reader[i],
+                                   GX_VA_TEX0 + i, &array);
         }
     }
 
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
-                           &base->color, 4, GL_UNSIGNED_BYTE, stride);
+    array.size = 4;
+    array.type = GL_UNSIGNED_BYTE;
+    array.pointer = &base->color;
+    _ogx_array_reader_init(&glparamstate.color_reader, GX_VA_CLR0, &array);
 
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM,
-                           base->norm, 3, GL_FLOAT, stride);
+    array.size = 3;
+    array.type = GL_FLOAT;
+    array.pointer = base->norm;
+    _ogx_array_reader_init(&glparamstate.normal_reader, GX_VA_NRM, &array);
 
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS,
-                           base->pos, 3, GL_FLOAT, stride);
+    array.pointer = base->pos;
+    _ogx_array_reader_init(&glparamstate.vertex_reader, GX_VA_POS, &array);
+
     glparamstate.cs.texcoord_enabled = glparamstate.imm_mode.has_texcoord;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
     glparamstate.cs.normal_enabled = glparamstate.imm_mode.has_normal;
     glparamstate.cs.vertex_enabled = 1;
+    glparamstate.dirty.bits.dirty_attributes = 0;
     glDrawArrays(glparamstate.imm_mode.prim_type, 0, glparamstate.imm_mode.current_numverts);
     glparamstate.cs = cs_backup;
     glparamstate.imm_mode.in_gl_begin = 0;
+
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
@@ -1696,111 +1708,94 @@ void glEnableClientState(GLenum cap)
 
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS, pointer,
-                           size, type, stride);
+    glparamstate.vertex_array.size = size;
+    glparamstate.vertex_array.type = type;
+    glparamstate.vertex_array.stride = stride;
+    glparamstate.vertex_array.pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM, pointer,
-                           3, type, stride);
+    glparamstate.normal_array.size = 3;
+    glparamstate.normal_array.type = type;
+    glparamstate.normal_array.stride = stride;
+    glparamstate.normal_array.pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glColorPointer(GLint size, GLenum type,
                     GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0, pointer,
-                           size, type, stride);
+    glparamstate.color_array.size = size;
+    glparamstate.color_array.type = type;
+    glparamstate.color_array.stride = stride;
+    glparamstate.color_array.pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
     int unit = glparamstate.cs.active_texture;
-    _ogx_array_reader_init(&glparamstate.texcoord_array[unit],
-                           GX_VA_TEX0 + unit, pointer,
-                           size, type, stride);
+    glparamstate.texcoord_array[unit].size = size;
+    glparamstate.texcoord_array[unit].type = type;
+    glparamstate.texcoord_array[unit].stride = stride;
+    glparamstate.texcoord_array[unit].pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
 {
-    const float *vertex_array = pointer;
-    const float *normal_array = pointer;
-    const float *texcoord_array = pointer;
-    const float *color_array = pointer;
+    OgxVertexAttribArray *vertex = &glparamstate.vertex_array;
+    OgxVertexAttribArray *normal = &glparamstate.normal_array;
+    OgxVertexAttribArray *color = &glparamstate.color_array;
+    int unit = glparamstate.cs.active_texture;
+    OgxVertexAttribArray *texcoord = &glparamstate.texcoord_array[unit];
 
     glparamstate.cs.index_enabled = 0;
     glparamstate.cs.normal_enabled = 0;
     glparamstate.cs.texcoord_enabled = 0;
-    glparamstate.cs.vertex_enabled = 0;
+    glparamstate.cs.vertex_enabled = 1; /* This is mandatory */
     glparamstate.cs.color_enabled = 0;
 
-    int cstride = 0;
+    vertex->type = GL_FLOAT;
+    vertex->size = 3;
+    color->type = GL_FLOAT;
     switch (format) {
     case GL_V2F:
-        glparamstate.cs.vertex_enabled = 1;
-        cstride = 2;
+        vertex->size = 2;
         break;
     case GL_V3F:
-        glparamstate.cs.vertex_enabled = 1;
-        cstride = 3;
         break;
     case GL_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
-        cstride = 6;
-        vertex_array += 3;
         break;
     case GL_T2F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 5;
-        vertex_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
         break;
     case GL_T2F_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 8;
-
-        vertex_array += 5;
-        normal_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
         break;
-
     case GL_C4F_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        cstride = 10;
-
-        vertex_array += 7;
-        normal_array += 4;
+        color->size = 4;
         break;
     case GL_C3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        cstride = 6;
-
-        vertex_array += 3;
+        color->size = 3;
         break;
     case GL_T2F_C3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 8;
-
-        vertex_array += 5;
-        color_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
+        color->size = 3;
         break;
     case GL_T2F_C4F_N3F_V3F: // Complete type
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 12;
-
-        vertex_array += 9;
-        normal_array += 6;
-        color_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
+        color->size = 4;
         break;
 
     case GL_C4UB_V2F:
@@ -1812,15 +1807,32 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
         return;
     }
 
-    if (stride == 0) stride = cstride * sizeof(float);
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS,
-                           vertex_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM,
-                           normal_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.texcoord_array[0], GX_VA_TEX0,
-                           texcoord_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
-                           color_array, 0, GL_FLOAT, stride);
+    const char *ptr = pointer;
+    if (glparamstate.cs.texcoord_enabled) {
+        texcoord->pointer = ptr;
+        texcoord->type = GL_FLOAT;
+        texcoord->size = 2;
+        ptr += 2 * sizeof(float);
+    }
+    if (glparamstate.cs.color_enabled) {
+        color->pointer = ptr;
+        /* TODO: use other type when implementing UB color support */
+        ptr += color->size * sizeof(float);
+    }
+    if (glparamstate.cs.normal_enabled) {
+        normal->pointer = ptr;
+        normal->type = GL_FLOAT;
+        normal->size = 3;
+        ptr += 3 * sizeof(float);
+    }
+    /* Vertices are always enabled */
+    vertex->pointer = ptr;
+    ptr += vertex->size * sizeof(float);
+    if (stride == 0) stride = ptr - (const char *)pointer;
+    vertex->stride = normal->stride = texcoord->stride =
+        color->stride = stride;
+
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 /*
@@ -2038,6 +2050,32 @@ static LightMasks prepare_lighting()
           "Ambient mask 0x%02x, diffuse 0x%02x, specular 0x%02x",
           masks.ambient_mask, masks.diffuse_mask, masks.specular_mask);
     return masks;
+}
+
+void _ogx_update_vertex_array_readers()
+{
+    if (glparamstate.cs.vertex_enabled) {
+        _ogx_array_reader_init(&glparamstate.vertex_reader, GX_VA_POS,
+                               &glparamstate.vertex_array);
+    }
+
+    if (glparamstate.cs.normal_enabled) {
+        _ogx_array_reader_init(&glparamstate.normal_reader, GX_VA_NRM,
+                               &glparamstate.normal_array);
+    }
+
+    if (glparamstate.cs.color_enabled) {
+        _ogx_array_reader_init(&glparamstate.color_reader, GX_VA_CLR0,
+                               &glparamstate.color_array);
+    }
+
+    for (int unit = 0; unit < MAX_TEXTURE_UNITS; unit++) {
+        if (!glparamstate.cs.texcoord_enabled & (1 << unit)) continue;
+        _ogx_array_reader_init(&glparamstate.texcoord_reader[unit], GX_VA_TEX0,
+                               &glparamstate.texcoord_array[unit]);
+    }
+
+    glparamstate.dirty.bits.dirty_attributes = 0;
 }
 
 OgxDrawMode _ogx_draw_mode(GLenum mode)
@@ -2448,14 +2486,17 @@ void glArrayElement(GLint i)
 {
     float value[3];
 
+    if (glparamstate.dirty.bits.dirty_attributes)
+        _ogx_update_vertex_array_readers();
+
     if (glparamstate.cs.normal_enabled) {
-        _ogx_array_reader_read_norm3f(&glparamstate.normal_array, i, value);
+        _ogx_array_reader_read_norm3f(&glparamstate.normal_reader, i, value);
         glNormal3fv(value);
     }
 
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (glparamstate.cs.texcoord_enabled & (1 << tex)) {
-            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array[tex],
+            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_reader[tex],
                                          i, value);
             glMultiTexCoord2fv(GL_TEXTURE0 + tex, value);
         }
@@ -2463,12 +2504,12 @@ void glArrayElement(GLint i)
 
     if (glparamstate.cs.color_enabled) {
         GXColor color;
-        _ogx_array_reader_read_color(&glparamstate.color_array, i, &color);
+        _ogx_array_reader_read_color(&glparamstate.color_reader, i, &color);
         glColor4ub(color.r, color.g, color.b, color.a);
     }
 
     if (glparamstate.cs.vertex_enabled) {
-        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, i, value);
+        _ogx_array_reader_read_pos3f(&glparamstate.vertex_reader, i, value);
         glVertex3fv(value);
     }
 }
@@ -2506,6 +2547,9 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
     HANDLE_CALL_LIST(DRAW_ARRAYS, mode, first, count);
 
+    if (glparamstate.dirty.bits.dirty_attributes)
+        _ogx_update_vertex_array_readers();
+
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
@@ -2535,6 +2579,9 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
         return;
 
     HANDLE_CALL_LIST(DRAW_ELEMENTS, mode, count, type, indices);
+
+    if (glparamstate.dirty.bits.dirty_attributes)
+        _ogx_update_vertex_array_readers();
 
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();

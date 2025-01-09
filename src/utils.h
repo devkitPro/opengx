@@ -332,6 +332,7 @@ void _ogx_setup_2D_projection(void);
 void _ogx_setup_3D_projection(void);
 
 bool _ogx_setup_render_stages(void);
+void _ogx_update_vertex_array_readers(void);
 
 #ifdef __cplusplus
 } // extern C

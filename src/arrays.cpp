@@ -480,9 +480,12 @@ struct CoordVertexReader: public GenericVertexReader<T> {
 
 void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
-                            const void *data,
-                            int num_components, GLenum type, int stride)
+                            const OgxVertexAttribArray *attr_data)
 {
+    int num_components = attr_data->size;
+    GLenum type = attr_data->type;
+    int stride = attr_data->stride;
+    const void *data = attr_data->pointer;
     TemplateSelectionInfo info =
         select_template(type, vertex_attribute, num_components);
 
@@ -575,16 +578,16 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
     GX_ClearVtxDesc();
     s_num_tex_arrays = 0;
 
-    VertexReaderBase *vertex_reader = get_reader(&glparamstate.vertex_array);
+    VertexReaderBase *vertex_reader = get_reader(&glparamstate.vertex_reader);
     vertex_reader->setup_draw();
 
     VertexReaderBase *normal_reader = nullptr;
     if (has_normals) {
-        normal_reader = get_reader(&glparamstate.normal_array);
+        normal_reader = get_reader(&glparamstate.normal_reader);
         normal_reader->setup_draw();
     }
     if (num_colors > 0) {
-        VertexReaderBase *r = get_reader(&glparamstate.color_array);
+        VertexReaderBase *r = get_reader(&glparamstate.color_reader);
         r->enable_duplicate_color(num_colors > 1);
         r->setup_draw();
     }
@@ -593,7 +596,7 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
     s_tex_unit_mask = 0;
     if (tex_unit_mask) {
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-            VertexReaderBase *r = get_reader(&glparamstate.texcoord_array[i]);
+            VertexReaderBase *r = get_reader(&glparamstate.texcoord_reader[i]);
             u8 unit_bit = 1 << i;
 
             if (draw_data->gxmode.mode == GX_POINTS &&
@@ -604,7 +607,7 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
                      * client, but a hardcoded (0, 0). */
                     GeneratedTexVertexReader *gr =
                         GeneratedTexVertexReader::create_at
-                        <PointSpritesTexReader>(&glparamstate.texcoord_array[i]);
+                        <PointSpritesTexReader>(&glparamstate.texcoord_reader[i]);
                     gr->setup_draw();
                     gr->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
                     s_tex_unit_mask |= unit_bit;
@@ -623,7 +626,7 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
                     switch (glparamstate.texture_unit[i].gen_mode) {
                     case GL_SPHERE_MAP:
                         gr = GeneratedTexVertexReader::create_at
-                            <SphereMapTexReader>(&glparamstate.texcoord_array[i]);
+                            <SphereMapTexReader>(&glparamstate.texcoord_reader[i]);
                         break;
                     }
                     gr->setup_draw();
@@ -670,20 +673,20 @@ uint8_t _ogx_arrays_get_units_with_tex_coord()
 
 void _ogx_arrays_process_element(int index)
 {
-    get_reader(&glparamstate.vertex_array)->process_element(index);
+    get_reader(&glparamstate.vertex_reader)->process_element(index);
 
     if (s_has_normals) {
-        get_reader(&glparamstate.normal_array)->process_element(index);
+        get_reader(&glparamstate.normal_reader)->process_element(index);
     }
 
     if (s_num_colors) {
-        get_reader(&glparamstate.color_array)->process_element(index);
+        get_reader(&glparamstate.color_reader)->process_element(index);
     }
 
     if (s_tex_unit_mask) {
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             if (s_tex_unit_mask & (1 << i)) {
-                get_reader(&glparamstate.texcoord_array[i])->
+                get_reader(&glparamstate.texcoord_reader[i])->
                     process_element(index);
             }
         }
@@ -692,20 +695,20 @@ void _ogx_arrays_process_element(int index)
 
 void _ogx_arrays_draw_done()
 {
-    get_reader(&glparamstate.vertex_array)->draw_done();
+    get_reader(&glparamstate.vertex_reader)->draw_done();
 
     if (s_has_normals) {
-        get_reader(&glparamstate.normal_array)->draw_done();
+        get_reader(&glparamstate.normal_reader)->draw_done();
     }
 
     if (s_num_colors) {
-        get_reader(&glparamstate.color_array)->draw_done();
+        get_reader(&glparamstate.color_reader)->draw_done();
     }
 
     if (s_tex_unit_mask) {
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             if (s_tex_unit_mask & (1 << i)) {
-                get_reader(&glparamstate.texcoord_array[i])->draw_done();
+                get_reader(&glparamstate.texcoord_reader[i])->draw_done();
             }
         }
     }

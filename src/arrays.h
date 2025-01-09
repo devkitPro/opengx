@@ -32,6 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define OPENGX_ARRAYS_H
 
 #include "opengx.h"
+#include "types.h"
 
 #include <GL/gl.h>
 #include <gccore.h>
@@ -48,8 +49,7 @@ typedef struct {
 
 void _ogx_array_reader_init(OgxArrayReader *reader,
                             uint8_t vertex_attribute,
-                            const void *data,
-                            int num_components, GLenum type, int stride);
+                            const OgxVertexAttribArray *attr_data);
 void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
                             bool has_normals, uint8_t num_colors,
                             uint8_t tex_unit_mask);

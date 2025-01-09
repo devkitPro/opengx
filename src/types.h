@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef OPENGX_TYPES_H
 #define OPENGX_TYPES_H
 
+#include <GL/gl.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -47,6 +48,13 @@ typedef uint8_t VboType;
 typedef float Pos3f[3];
 typedef float Norm3f[3];
 typedef float Tex2f[2];
+
+typedef struct _OgxVertexAttribArray {
+    uint8_t size; /* max is 4, using a bitfield might be an option */
+    uint8_t stride;
+    GLenum type;
+    const void *pointer;
+} OgxVertexAttribArray;
 
 #ifdef __cplusplus
 } // extern C

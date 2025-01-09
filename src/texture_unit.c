@@ -475,7 +475,7 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
         u8 input_coordinates;
         if (has_texture_coordinates) {
             input_coordinates = _ogx_array_reader_get_tex_coord_source(
-                                        &glparamstate.texcoord_array[tex]);
+                                        &glparamstate.texcoord_reader[tex]);
         } else if (!tu->gen_enabled) {
             warning("Skipping texture unit, since coordinates are missing.");
             continue;
