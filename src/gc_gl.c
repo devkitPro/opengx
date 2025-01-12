@@ -2052,6 +2052,19 @@ static LightMasks prepare_lighting()
     return masks;
 }
 
+static int count_color_channels()
+{
+    int color_provide = 0;
+    if (glparamstate.cs.color_enabled &&
+        (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
+        if (glparamstate.lighting.enabled)
+            color_provide = 2; // Lighting requires two color channels
+        else
+            color_provide = 1;
+    }
+    return color_provide;
+}
+
 void _ogx_update_vertex_array_readers()
 {
     if (glparamstate.cs.vertex_enabled) {
@@ -2519,14 +2532,7 @@ static bool setup_draw(const OgxDrawData *draw_data)
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
     uint8_t texen = glparamstate.texture_enabled;
-    uint8_t color_provide = 0;
-    if (glparamstate.cs.color_enabled &&
-        (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
-        if (glparamstate.lighting.enabled)
-            color_provide = 2; // Lighting requires two color channels
-        else
-            color_provide = 1;
-    }
+    uint8_t color_provide = count_color_channels();
     _ogx_arrays_setup_draw(draw_data,
                            glparamstate.cs.normal_enabled, color_provide, texen);
 
