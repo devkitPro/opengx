@@ -462,20 +462,15 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
     u8 prev_rgb = raster_rgb;
     u8 prev_alpha = raster_alpha;
 
-    u8 units_with_tex_coords = _ogx_arrays_get_units_with_tex_coord() |
-        glparamstate.cs.texcoord_enabled;
-
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
         if (!(glparamstate.texture_enabled & (1 << tex))) continue;
 
         OgxTextureUnit *tu = &glparamstate.texture_unit[tex];
 
-        /* True if the client provided texture coordinates for this unit. */
-        bool has_texture_coordinates = units_with_tex_coords & (1 << tex);
-        u8 input_coordinates;
-        if (has_texture_coordinates) {
+        u8 input_coordinates = 0xff;
+        if (tu->array_reader) {
             input_coordinates = _ogx_array_reader_get_tex_coord_source(
-                                        &glparamstate.texcoord_reader[tex]);
+                                        tu->array_reader);
         } else if (!tu->gen_enabled) {
             warning("Skipping texture unit, since coordinates are missing.");
             continue;
@@ -499,7 +494,7 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
             setup_texture_stage_matrix(tu, dtt_matrix);
             /* Use GPU texture coordinate generation only if the coordinates
              * haven't already been generated in software. */
-            if (tu->gen_enabled && !_ogx_texture_gen_sw_enabled(tex)) {
+            if (tu->gen_enabled && !tu->array_reader) {
                 setup_texture_gen(tu, tex_coord, dtt_matrix, input_coordinates);
             } else {
                 GX_SetTexCoordGen2(tex_coord, GX_TG_MTX2x4, input_coordinates,

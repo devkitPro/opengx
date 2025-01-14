@@ -232,6 +232,7 @@ void glTexGeni(GLenum coord, GLenum pname, GLint param)
     switch (pname) {
     case GL_TEXTURE_GEN_MODE:
         tu->gen_mode = param;
+        glparamstate.dirty.bits.dirty_attributes = 1;
         break;
     }
     glparamstate.dirty.bits.dirty_tev = 1;
@@ -316,6 +317,7 @@ void glTexEnvi(GLenum target, GLenum pname, GLint param)
         switch (pname) {
         case GL_COORD_REPLACE:
             glparamstate.point_sprites_coord_replace = param;
+            glparamstate.dirty.bits.dirty_attributes = 1;
             break;
         }
         return;

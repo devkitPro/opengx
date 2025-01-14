@@ -32,20 +32,29 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "debug.h"
 #include "state.h"
-#include "texture_gen_sw.h"
 #include "utils.h"
 #include "vbo.h"
 
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <ogc/gx.h>
 #include <variant>
 
+#define MAX_TEXCOORDS 8 /* GX_VA_TEX7 - GX_VA_TEX8 */
+
+/* The difference between s_num_tex_arrays and s_num_tex_coords is that the
+ * former is used to count the number of active OgxArrayReader elements; but
+ * not all of them consume a tex coordinate, because TexCoordProxyVertexReader
+ * elements do not emit any new coordinates. So, s_num_tex_coords counts the
+ * number of arrays that produce texture coordinates. */
 static char s_num_tex_arrays = 0;
+static char s_num_tex_coords = 0;
+
 static bool s_has_normals = false;
 static uint8_t s_num_colors = 0;
-static uint8_t s_tex_unit_mask = 0;
+static OgxDrawFlags s_draw_flags = OGX_DRAW_FLAG_NONE;
 
 struct GxVertexFormat {
     uint8_t attribute;
@@ -72,6 +81,12 @@ struct GxVertexFormat {
         return component_size * num_components;
     }
 };
+
+static int compute_array_stride(const OgxVertexAttribArray *array)
+{
+    return array->stride > 0 ? array->stride :
+        array->size * sizeof_gl_type(array->type);
+}
 
 struct TemplateSelectionInfo {
     GxVertexFormat format;
@@ -140,130 +155,232 @@ static TemplateSelectionInfo select_template(GLenum type,
     return info;
 }
 
+/* This function assumes that num_components is at least 2 */
+template <typename T>
+static void to_pos3f(const T *components, int num_components, Pos3f pos) {
+    pos[0] = *components++;
+    pos[1] = *components++;
+    if (num_components >= 3) {
+        pos[2] = *components++;
+        if (num_components == 4) {
+            float w = *components++;
+            pos[0] /= w;
+            pos[1] /= w;
+            pos[2] /= w;
+        }
+    } else {
+        pos[2] = 0.0f;
+    }
+}
+
+template <typename T>
+static void to_norm3f(const T *components, Norm3f norm) {
+    norm[0] = *components++;
+    norm[1] = *components++;
+    norm[2] = *components++;
+}
+
+/* This function assumes that num_components is at least 3 */
+template <typename T>
+static void to_color(const T *components, int num_components, GXColor *color) {
+    auto read_color_component = [](const T value) {
+        if constexpr (std::numeric_limits<T>::is_integer) {
+            return value * 255 / std::numeric_limits<T>::max();
+        } else {  // floating-point type
+            return value * 255.0f;
+        }
+    };
+
+    color->r = read_color_component(*components++);
+    color->g = read_color_component(*components++);
+    color->b = read_color_component(*components++);
+    color->a = num_components == 4 ?
+        read_color_component(*components++) : 255;
+}
+
+template <typename T>
+static void to_tex2f(const T *components, int num_components, Tex2f tex) {
+    tex[0] = *components++;
+    if (num_components >= 2) {
+        tex[1] = *components++;
+    } else {
+        tex[1] = 0.0f;
+    }
+}
+
 struct AbstractVertexReader {
-    virtual void setup_draw() = 0;
-    virtual void draw_done() = 0;
+    AbstractVertexReader(GxVertexFormat format): format(format) {}
 
-    virtual void set_tex_coord_source(uint8_t source) = 0;
-    virtual uint8_t get_tex_coord_source() const = 0;
-
-    virtual void process_element(int index) = 0;
-
-    virtual void read_color(int index, GXColor *color) = 0;
-    virtual void read_pos3f(int index, Pos3f pos) = 0;
-    virtual void read_norm3f(int index, Norm3f norm) = 0;
-    virtual void read_tex2f(int index, Tex2f tex) = 0;
-};
-
-struct GeneratedTexVertexReader: public AbstractVertexReader {
-    GeneratedTexVertexReader(OgxArrayReader *orig):
-        prev(orig) {}
-
-    template <class T>
-    static T *create_at(OgxArrayReader *location) {
-        OgxArrayReader *orig =
-            static_cast<OgxArrayReader*>(malloc(sizeof(OgxArrayReader)));
-        memcpy(orig, location, sizeof(OgxArrayReader));
-        return new (location) T(orig);
+    virtual void setup_draw() {
+        GX_SetVtxDesc(format.attribute, GX_DIRECT);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
+                         format.type, format.size, 0);
     }
 
-    void setup_draw() override {
-        u8 attribute = GX_VA_TEX0 + s_num_tex_arrays++;
-        GX_SetVtxDesc(attribute, GX_DIRECT);
-        GX_SetVtxAttrFmt(GX_VTXFMT0, attribute, GX_TEX_ST, GX_F32, 0);
+    virtual void draw_done() {};
+
+    virtual void get_format(uint8_t *attribute, uint8_t *inputmode,
+                            uint8_t *type, uint8_t *size) const {
+        *attribute = format.attribute;
+        *inputmode = GX_DIRECT;
+        *type = format.type;
+        *size = format.size;
     }
 
-    void draw_done() override {
-        if (prev) {
-            void *old_copy = prev;
-            memcpy(this, old_copy, sizeof(OgxArrayReader));
-            free(old_copy);
+    virtual uint8_t get_tex_coord_source() const {
+        switch (format.attribute) {
+        case GX_VA_POS:
+            return GX_TG_POS;
+        case GX_VA_NRM:
+            return GX_TG_NRM;
+        case GX_VA_CLR0:
+        case GX_VA_CLR1:
+            return GX_TG_COLOR0 + (format.attribute - GX_VA_CLR0);
+        case GX_VA_TEX0:
+        case GX_VA_TEX1:
+        case GX_VA_TEX2:
+        case GX_VA_TEX3:
+        case GX_VA_TEX4:
+        case GX_VA_TEX5:
+        case GX_VA_TEX6:
+        case GX_VA_TEX7:
+            return GX_TG_TEX0 + (format.attribute - GX_VA_TEX0);
+        default:
+            return 0xff;
         }
     }
 
-    void set_tex_coord_source(uint8_t source) override {
-        tex_coord_source = source;
-    }
-    uint8_t get_tex_coord_source() const override { return tex_coord_source; }
+    virtual void process_element(int index) = 0;
 
-    void process_element(int index) override {
-        Tex2f value;
-        read_tex2f(index, value);
-        GX_TexCoord2f32(value[0], value[1]);
-    }
-
-    void read_color(int index, GXColor *color) override {}
-    void read_pos3f(int index, Pos3f pos) override {}
-    void read_norm3f(int index, Norm3f norm) override {}
+    virtual void read_color(int index, GXColor *color) const = 0;
+    virtual void read_pos3f(int index, Pos3f pos) const = 0;
+    virtual void read_norm3f(int index, Norm3f norm) const = 0;
+    virtual void read_tex2f(int index, Tex2f tex) const = 0;
 
 protected:
-    /* This is the instance of the VertexReader that the
-     * GeneratedTexVertexReader is replacing. It will have to be restored in
-     * place after the drawing has been done. */
-    OgxArrayReader *prev;
-    uint8_t tex_coord_source;
+    GxVertexFormat format;
 };
 
-struct SphereMapTexReader: public GeneratedTexVertexReader {
-    using GeneratedTexVertexReader::GeneratedTexVertexReader;
-    void read_tex2f(int index, Tex2f tex) override {
-        _ogx_texture_gen_sw_sphere_map(index, tex);
+template <typename T>
+struct ConstantVertexReader: public AbstractVertexReader {
+    ConstantVertexReader(GxVertexFormat format, const T *values):
+        AbstractVertexReader(format) {
+        for (int i = 0; i < format.num_components; i++) {
+            this->values[i] = values[i];
+        }
     }
+
+    void process_element(int /*index*/) override {
+        const T *ptr = values;
+        for (int i = 0; i < format.num_components; i++, ptr++) {
+            if constexpr (sizeof(T) == 1) {
+                wgPipe->U8 = *ptr;
+            } else if constexpr (sizeof(T) == 2) {
+                wgPipe->U16 = *ptr;
+            } else if constexpr (sizeof(T) == 4) {
+                wgPipe->F32 = *ptr;
+            }
+        }
+    }
+
+    void read_pos3f(int index, Pos3f pos) const override {
+        to_pos3f(values, format.num_components, pos);
+    }
+    void read_norm3f(int index, Norm3f norm) const override {
+        to_norm3f(values, norm);
+    }
+    void read_color(int index, GXColor *color) const override {
+        to_color(values, format.num_components, color);
+    }
+    void read_tex2f(int index, Tex2f tex) const override {
+        to_tex2f(values, format.num_components, tex);
+    }
+
+protected:
+    T values[4];
 };
 
-struct PointSpritesTexReader: public GeneratedTexVertexReader {
-    using GeneratedTexVertexReader::GeneratedTexVertexReader;
-    void read_tex2f(int index, Tex2f tex) override {
-        tex[0] = tex[1] = 0.0f;
+struct GeneratorVertexReader: public AbstractVertexReader {
+    GeneratorVertexReader(GxVertexFormat format, OgxGenerator_fv generator):
+        AbstractVertexReader(format),
+        generator(generator) {
     }
+
+    void process_element(int index) override {
+        float values[2];
+        generator(index, values);
+        for (int i = 0; i < format.num_components; i++) {
+            GX_TexCoord1f32(values[i]);
+        }
+    }
+
+    void read_pos3f(int index, Pos3f pos) const override {}
+    void read_norm3f(int index, Norm3f norm) const override {}
+    void read_color(int index, GXColor *color) const override {}
+    void read_tex2f(int index, Tex2f tex) const override {
+        generator(index, tex);
+    }
+
+protected:
+    OgxGenerator_fv generator;
+};
+
+struct TexCoordProxyVertexReader: public AbstractVertexReader {
+    TexCoordProxyVertexReader(GxVertexFormat format,
+                              const AbstractVertexReader *source_reader):
+        AbstractVertexReader(format),
+        source_reader(source_reader) {}
+
+    /* On these methods we do nothing, since we are just referencing data
+     * already sent by another array */
+    void process_element(int index) override {}
+    void setup_draw() override {}
+    void get_format(uint8_t *attribute, uint8_t *inputmode,
+                    uint8_t *type, uint8_t *size) const override {
+        *inputmode = GX_NONE;
+    }
+
+    /* For the other methods, we proxy the source array */
+    uint8_t get_tex_coord_source() const override {
+        return source_reader->get_tex_coord_source();
+    }
+    void read_color(int index, GXColor *color) const override {
+        return source_reader->read_color(index, color);
+    }
+    void read_pos3f(int index, Pos3f pos) const override {
+        return source_reader->read_pos3f(index, pos);
+    }
+    void read_norm3f(int index, Norm3f norm) const override {
+        return source_reader->read_norm3f(index, norm);
+    }
+    void read_tex2f(int index, Tex2f tex) const override {
+        return source_reader->read_tex2f(index, tex);
+    }
+
+protected:
+    const AbstractVertexReader *source_reader;
 };
 
 struct VertexReaderBase: public AbstractVertexReader {
     VertexReaderBase(GxVertexFormat format, VboType vbo, const void *data,
                      int stride):
-        format(format),
+        AbstractVertexReader(format),
         data(static_cast<const char *>(vbo ?
                                        _ogx_vbo_get_data(vbo, data) : data)),
-        stride(stride), dup_color(false), vbo(vbo) {}
-
-    void setup_draw() override {
-        if (format.attribute >= GX_VA_TEX0 &&
-            format.attribute <= GX_VA_TEX7) {
-            /* Texture coordinates must be enable sequentially */
-            format.attribute = GX_VA_TEX0 + s_num_tex_arrays++;
-            /* And GX does not support more than two coordinates */
-            if (format.num_components > 2) format.num_components = 2;
-        }
-        GX_SetVtxDesc(format.attribute, GX_DIRECT);
-        GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
-                         format.type, format.size, 0);
-        if (dup_color) {
-            GX_SetVtxDesc(format.attribute + 1, GX_DIRECT);
-            GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute + 1,
-                             format.type, format.size, 0);
-        }
-    }
-
-    void enable_duplicate_color(bool dup_color) {
-        this->dup_color = dup_color;
-    }
+        stride(stride), vbo(vbo) {}
 
     void draw_done() override {}
 
-    void set_tex_coord_source(uint8_t source) override {
-        tex_coord_source = source;
+    bool has_same_data(const OgxVertexAttribArray *array) const {
+        int array_stride = compute_array_stride(array);
+        VboType array_vbo = glparamstate.bound_vbo_array;
+        const void *array_data = array_vbo ?
+            _ogx_vbo_get_data(array_vbo, array->pointer) : array->pointer;
+        return data == array_data && stride == array_stride;
     }
-    uint8_t get_tex_coord_source() const override { return tex_coord_source; }
 
-    bool has_same_data(VertexReaderBase *other) const {
-        return data == other->data && stride == other->stride;
-    }
-
-    GxVertexFormat format;
     const char *data;
     uint16_t stride;
-    bool dup_color;
-    uint8_t tex_coord_source;
     VboType vbo;
 };
 
@@ -275,31 +392,27 @@ struct DirectVboReader: public VertexReaderBase {
     }
 
     void setup_draw() override {
-        if (format.attribute >= GX_VA_TEX0 &&
-            format.attribute <= GX_VA_TEX7) {
-            /* Texture coordinates must be enable sequentially */
-            format.attribute = GX_VA_TEX0 + s_num_tex_arrays++;
-        }
         GX_SetArray(format.attribute, const_cast<char*>(data), stride);
         GX_SetVtxDesc(format.attribute, GX_INDEX16);
         GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute,
                          format.type, format.size, 0);
-        if (dup_color) {
-            GX_SetVtxDesc(format.attribute + 1, GX_INDEX16);
-            GX_SetVtxAttrFmt(GX_VTXFMT0, format.attribute + 1,
-                             format.type, format.size, 0);
-        }
+    }
+
+    void get_format(uint8_t *attribute, uint8_t *inputmode,
+                    uint8_t *type, uint8_t *size) const override {
+        VertexReaderBase::get_format(attribute, inputmode, type, size);
+        *inputmode = GX_INDEX16;
     }
 
     void process_element(int index) {
         GX_Position1x16(index);
     }
-    template<typename T> const T *elemAt(int index) {
+    template<typename T> const T *elemAt(int index) const {
         return reinterpret_cast<const T*>(data + stride * index);
     }
 
     template<typename T>
-    void read_floats(int index, float *out) {
+    void read_floats(int index, float *out) const {
         const T *ptr = elemAt<T>(index);
         out[0] = *ptr++;
         out[1] = *ptr++;
@@ -310,7 +423,7 @@ struct DirectVboReader: public VertexReaderBase {
         }
     }
 
-    void read_float_components(int index, float *out) {
+    void read_float_components(int index, float *out) const {
         switch (format.size) {
         case GX_F32: read_floats<float>(index, out); break;
         case GX_S16: read_floats<int16_t>(index, out); break;
@@ -320,18 +433,18 @@ struct DirectVboReader: public VertexReaderBase {
         }
     }
 
-    void read_pos3f(int index, Pos3f pos) override {
+    void read_pos3f(int index, Pos3f pos) const override {
         read_float_components(index, pos);
     }
-    void read_norm3f(int index, Norm3f norm) override {
+    void read_norm3f(int index, Norm3f norm) const override {
         read_float_components(index, norm);
     }
 
     /* These should never be called on this class, since it doesn't make sense
      * to call glArrayElement() when a VBO is bound, and they are not used for
      * texture coordinate generation. */
-    void read_color(int index, GXColor *color) override {}
-    void read_tex2f(int index, Tex2f tex) override {}
+    void read_color(int index, GXColor *color) const override {}
+    void read_tex2f(int index, Tex2f tex) const override {}
 };
 
 template <typename T>
@@ -343,11 +456,11 @@ struct GenericVertexReader: public VertexReaderBase {
     {
     }
 
-    const T *elemAt(int index) {
+    const T *elemAt(int index) const {
         return reinterpret_cast<const T*>(data + stride * index);
     }
 
-    uint8_t read_color_component(const T *ptr) {
+    static uint8_t read_color_component(const T *ptr) {
         if constexpr (std::numeric_limits<T>::is_integer) {
             return sizeof(T) > 1 ?
                 (*ptr * 255 / std::numeric_limits<T>::max()) : *ptr;
@@ -357,7 +470,7 @@ struct GenericVertexReader: public VertexReaderBase {
     }
 
     /* The following methods are only kept because of glArrayElement() */
-    void read_color(int index, GXColor *color) override {
+    void read_color(int index, GXColor *color) const override {
         const T *ptr = elemAt(index);
         color->r = read_color_component(ptr++);
         color->g = read_color_component(ptr++);
@@ -366,7 +479,7 @@ struct GenericVertexReader: public VertexReaderBase {
             read_color_component(ptr++) : 255;
     }
 
-    void read_pos3f(int index, Pos3f pos) override {
+    void read_pos3f(int index, Pos3f pos) const override {
         const T *ptr = elemAt(index);
         pos[0] = *ptr++;
         pos[1] = *ptr++;
@@ -383,14 +496,14 @@ struct GenericVertexReader: public VertexReaderBase {
         }
     }
 
-    void read_norm3f(int index, Norm3f norm) override {
+    void read_norm3f(int index, Norm3f norm) const override {
         const T *ptr = elemAt(index);
         norm[0] = *ptr++;
         norm[1] = *ptr++;
         norm[2] = *ptr++;
     }
 
-    void read_tex2f(int index, Tex2f tex) override {
+    void read_tex2f(int index, Tex2f tex) const override {
         const T *ptr = elemAt(index);
         tex[0] = *ptr++;
         if (format.num_components >= 2) {
@@ -442,12 +555,8 @@ struct ColorVertexReader: public GenericVertexReader<T> {
         if (format.num_components == 4) {
             color.a = read_color_component(ptr++);
             GX_Color4u8(color.r, color.g, color.b, color.a);
-            if (this->dup_color)
-                GX_Color4u8(color.r, color.g, color.b, color.a);
         } else {
             GX_Color3u8(color.r, color.g, color.b);
-            if (this->dup_color)
-                GX_Color3u8(color.r, color.g, color.b);
         }
     }
 };
@@ -478,218 +587,59 @@ struct CoordVertexReader: public GenericVertexReader<T> {
     }
 };
 
-void _ogx_array_reader_init(OgxArrayReader *reader,
-                            uint8_t vertex_attribute,
-                            const OgxVertexAttribArray *attr_data)
-{
-    int num_components = attr_data->size;
-    GLenum type = attr_data->type;
-    int stride = attr_data->stride;
-    const void *data = attr_data->pointer;
-    TemplateSelectionInfo info =
-        select_template(type, vertex_attribute, num_components);
-
-    VboType vbo = glparamstate.bound_vbo_array;
-
-    if (info.same_type) {
-        /* No conversions needed, just dump the data from the array directly
-         * into the GX pipe. */
-        if (vbo) {
-            new (reader) DirectVboReader(info.format, vbo, data, stride);
-            return;
-        }
-        switch (type) {
-        case GL_UNSIGNED_BYTE:
-            new (reader) SameTypeVertexReader<int8_t>(
-                info.format, vbo, data, stride);
-            return;
-        case GL_SHORT:
-            new (reader) SameTypeVertexReader<int16_t>(
-                info.format, vbo, data, stride);
-            return;
-        case GL_INT:
-            new (reader) SameTypeVertexReader<int32_t>(
-                info.format, vbo, data, stride);
-            return;
-        case GL_FLOAT:
-            new (reader) SameTypeVertexReader<float>(
-                info.format, vbo, data, stride);
-            return;
-        }
-    }
-
-    if (vertex_attribute == GX_VA_CLR0 || vertex_attribute == GX_VA_CLR1) {
-        switch (type) {
-        /* The case GL_UNSIGNED_BYTE is handled by the SameTypeVertexReader */
-        case GL_BYTE:
-            new (reader) ColorVertexReader<char>(info.format, vbo, data, stride);
-            return;
-        case GL_SHORT:
-            new (reader) ColorVertexReader<int16_t>(info.format, vbo, data, stride);
-            return;
-        case GL_INT:
-            new (reader) ColorVertexReader<int32_t>(info.format, vbo, data, stride);
-            return;
-        case GL_FLOAT:
-            new (reader) ColorVertexReader<float>(info.format, vbo, data, stride);
-            return;
-        case GL_DOUBLE:
-            new (reader) ColorVertexReader<double>(info.format, vbo, data, stride);
-            return;
-        }
-    }
-
-    /* We can use the CoordVertexReader not only for positional
-     * coordinates, but also for normals and texture coordinates because
-     * the GX_Position*() functions are just storing floats into the GX
-     * pipe (that is, GX_Position2f32() behaves exactly like
-     * GX_TexCoord2f32()). */
-    switch (type) {
-    case GL_BYTE:
-        new (reader) CoordVertexReader<char>(info.format, vbo, data, stride);
-        return;
-    case GL_SHORT:
-        new (reader) CoordVertexReader<int16_t>(info.format, vbo, data, stride);
-        return;
-    case GL_INT:
-        new (reader) CoordVertexReader<int32_t>(info.format, vbo, data, stride);
-        return;
-    case GL_FLOAT:
-        new (reader) CoordVertexReader<float>(info.format, vbo, data, stride);
-        return;
-    case GL_DOUBLE:
-        new (reader) CoordVertexReader<double>(info.format, vbo, data, stride);
-        return;
-    }
-
-    warning("Unknown array data type %x for attribute %d\n",
-            type, vertex_attribute);
-}
-
 static inline VertexReaderBase *get_reader(OgxArrayReader *reader)
 {
     return reinterpret_cast<VertexReaderBase *>(reader);
 }
 
 void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
-                            bool has_normals, uint8_t num_colors,
-                            uint8_t tex_unit_mask)
+                            OgxDrawFlags flags)
 {
     GX_ClearVtxDesc();
-    s_num_tex_arrays = 0;
+
+    s_draw_flags = flags;
 
     VertexReaderBase *vertex_reader = get_reader(&glparamstate.vertex_reader);
     vertex_reader->setup_draw();
 
+    if (flags & OGX_DRAW_FLAG_FLAT)
+        return; /* No more attributes are needed */
+
     VertexReaderBase *normal_reader = nullptr;
-    if (has_normals) {
+    if (s_has_normals) {
         normal_reader = get_reader(&glparamstate.normal_reader);
         normal_reader->setup_draw();
     }
-    if (num_colors > 0) {
-        VertexReaderBase *r = get_reader(&glparamstate.color_reader);
-        r->enable_duplicate_color(num_colors > 1);
+
+    for (int i = 0; i < s_num_colors; i++) {
+        VertexReaderBase *r = get_reader(&glparamstate.color_reader[i]);
         r->setup_draw();
     }
 
-    int sent_tex_arrays = 0;
-    s_tex_unit_mask = 0;
-    if (tex_unit_mask) {
-        for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-            VertexReaderBase *r = get_reader(&glparamstate.texcoord_reader[i]);
-            u8 unit_bit = 1 << i;
-
-            if (draw_data->gxmode.mode == GX_POINTS &&
-                glparamstate.point_sprites_enabled &&
-                glparamstate.point_sprites_coord_replace) {
-                if (tex_unit_mask & unit_bit) {
-                    /* Don't pass the texture coordinates specified by the
-                     * client, but a hardcoded (0, 0). */
-                    GeneratedTexVertexReader *gr =
-                        GeneratedTexVertexReader::create_at
-                        <PointSpritesTexReader>(&glparamstate.texcoord_reader[i]);
-                    gr->setup_draw();
-                    gr->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
-                    s_tex_unit_mask |= unit_bit;
-                    /* Do not process more units */
-                    i = MAX_TEXTURE_UNITS;
-                }
-                continue;
-            }
-
-            if (glparamstate.texture_unit[i].gen_enabled) {
-                /* Some kinds of texture generation cannot be performed by the
-                 * GPU, and we have to generate the texture coordinates in
-                 * software. */
-                if (_ogx_texture_gen_sw_enabled(i)) {
-                    GeneratedTexVertexReader *gr;
-                    switch (glparamstate.texture_unit[i].gen_mode) {
-                    case GL_SPHERE_MAP:
-                        gr = GeneratedTexVertexReader::create_at
-                            <SphereMapTexReader>(&glparamstate.texcoord_reader[i]);
-                        break;
-                    }
-                    gr->setup_draw();
-                    gr->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
-                    s_tex_unit_mask |= unit_bit;
-                    continue;
-                }
-            }
-
-            if (tex_unit_mask & unit_bit) {
-                /* See if the data array is the same as the positional or
-                 * normal array. This is not just an optimization, it's
-                 * actually needed because GX only supports up to two input
-                 * coordinates for GX_VA_TEXx, but the client might provide
-                 * three (along with an appropriate texture matrix). So, at
-                 * least in those cases where these arrays coincide, we can
-                 * support having three texture input coordinates. */
-                if (r->has_same_data(vertex_reader)) {
-                    r->set_tex_coord_source(GX_TG_POS);
-                } else if (normal_reader &&
-                           r->has_same_data(normal_reader)) {
-                    r->set_tex_coord_source(GX_TG_NRM);
-                } else {
-                    /* We could go on and check if this array has the same data
-                     * of another texture array sent earlier in this same loop,
-                     * but let's leave this optimisation for later. */
-                    r->setup_draw();
-                    r->set_tex_coord_source(GX_TG_TEX0 + sent_tex_arrays++);
-                    s_tex_unit_mask |= unit_bit;
-                }
-            }
-        }
+    for (int i = 0; i < s_num_tex_arrays; i++) {
+        VertexReaderBase *r = get_reader(&glparamstate.texcoord_reader[i]);
+        r->setup_draw();
     }
-
-    s_has_normals = has_normals;
-    s_num_colors = num_colors;
-    /* s_tex_unit_mask has been set in the loop above */
-}
-
-uint8_t _ogx_arrays_get_units_with_tex_coord()
-{
-    return s_tex_unit_mask;
 }
 
 void _ogx_arrays_process_element(int index)
 {
     get_reader(&glparamstate.vertex_reader)->process_element(index);
 
+    if (s_draw_flags & OGX_DRAW_FLAG_FLAT)
+        return; /* No more attributes are needed */
+
     if (s_has_normals) {
         get_reader(&glparamstate.normal_reader)->process_element(index);
     }
 
-    if (s_num_colors) {
-        get_reader(&glparamstate.color_reader)->process_element(index);
+    for (int i = 0; i < s_num_colors; i++) {
+        get_reader(&glparamstate.color_reader[i])->process_element(index);
     }
 
-    if (s_tex_unit_mask) {
-        for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-            if (s_tex_unit_mask & (1 << i)) {
-                get_reader(&glparamstate.texcoord_reader[i])->
-                    process_element(index);
-            }
-        }
+    for (int i = 0; i < s_num_tex_arrays; i++) {
+        get_reader(&glparamstate.texcoord_reader[i])->
+            process_element(index);
     }
 }
 
@@ -701,24 +651,13 @@ void _ogx_arrays_draw_done()
         get_reader(&glparamstate.normal_reader)->draw_done();
     }
 
-    if (s_num_colors) {
-        get_reader(&glparamstate.color_reader)->draw_done();
+    for (int i = 0; i < s_num_colors; i++) {
+        get_reader(&glparamstate.color_reader[i])->draw_done();
     }
 
-    if (s_tex_unit_mask) {
-        for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-            if (s_tex_unit_mask & (1 << i)) {
-                get_reader(&glparamstate.texcoord_reader[i])->draw_done();
-            }
-        }
+    for (int i = 0; i < s_num_tex_arrays; i++) {
+        get_reader(&glparamstate.texcoord_reader[i])->draw_done();
     }
-}
-
-void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
-                                        bool dup_color)
-{
-    VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
-    r->enable_duplicate_color(dup_color);
 }
 
 void _ogx_array_reader_process_element(OgxArrayReader *reader, int index)
@@ -729,7 +668,7 @@ void _ogx_array_reader_process_element(OgxArrayReader *reader, int index)
 
 uint8_t _ogx_array_reader_get_tex_coord_source(OgxArrayReader *reader)
 {
-    return get_reader(reader)->tex_coord_source;
+    return get_reader(reader)->get_tex_coord_source();
 }
 
 void _ogx_array_reader_read_pos3f(OgxArrayReader *reader,
@@ -758,4 +697,212 @@ void _ogx_array_reader_read_color(OgxArrayReader *reader,
 {
     VertexReaderBase *r = reinterpret_cast<VertexReaderBase *>(reader);
     r->read_color(index, color);
+}
+
+static OgxArrayReader *allocate_reader_for_format(GxVertexFormat *format)
+{
+    switch (format->attribute) {
+    case GX_VA_POS:
+        return &glparamstate.vertex_reader;
+    case GX_VA_NRM:
+        s_has_normals = true;
+        return &glparamstate.normal_reader;
+    case GX_VA_CLR0:
+        if (s_num_colors >= MAX_COLOR_ARRAYS) return NULL;
+        format->attribute += s_num_colors;
+        return &glparamstate.color_reader[s_num_colors++];
+    case GX_VA_TEX0:
+        if (s_num_tex_arrays >= MAX_TEXCOORD_ARRAYS) return NULL;
+        format->attribute += s_num_tex_coords;
+        return &glparamstate.texcoord_reader[s_num_tex_arrays++];
+    }
+    return NULL;
+}
+
+void _ogx_arrays_reset()
+{
+    s_has_normals = 0;
+    s_num_colors = 0;
+    s_num_tex_arrays = 0;
+    s_num_tex_coords = 0;
+}
+
+OgxArrayReader *_ogx_array_add_constant_fv(uint8_t attribute, int size,
+                                const float *values)
+{
+    TemplateSelectionInfo info = select_template(GL_FLOAT, attribute, size);
+    OgxArrayReader *reader = allocate_reader_for_format(&info.format);
+    if (!reader) return NULL;
+    new (reader) ConstantVertexReader(info.format, values);
+    if (attribute == GX_VA_TEX0)
+        s_num_tex_coords++;
+    return reader;
+}
+
+OgxArrayReader *_ogx_array_add(uint8_t attribute, const OgxVertexAttribArray *array)
+{
+    TemplateSelectionInfo info =
+        select_template(array->type, attribute, array->size);
+    OgxArrayReader *reader = allocate_reader_for_format(&info.format);
+    if (!reader) return NULL;
+
+    if (attribute == GX_VA_TEX0) {
+        /* See if the data array is the same as the positional or normal array.
+         * This is not just an optimization, it's actually needed because GX
+         * only supports up to two input coordinates for GX_VA_TEXx, but the
+         * client might provide three (along with an appropriate texture
+         * matrix). So, at least in those cases where these arrays coincide, we
+         * can support having three texture input coordinates. */
+        OgxArrayReader *source_reader;
+        if (get_reader(&glparamstate.vertex_reader)->has_same_data(array)) {
+            source_reader = &glparamstate.vertex_reader;
+        } else if (s_has_normals &&
+                   get_reader(&glparamstate.normal_reader)->has_same_data(array)) {
+            source_reader = &glparamstate.normal_reader;
+        } else {
+            /* We could go on and check if this array has the same data of
+             * another texture array sent earlier in this same loop, but let's
+             * leave this optimisation for later. */
+            source_reader = NULL;
+        }
+
+        if (source_reader) {
+            new (reader) TexCoordProxyVertexReader(info.format,
+                                                   get_reader(source_reader));
+            return reader;
+        }
+
+        /* Otherwise, this is an array providing its own texture coordinates;
+         * increment the counter */
+        s_num_tex_coords++;
+    }
+
+    VboType vbo = glparamstate.bound_vbo_array;
+    GLenum type = array->type;
+    int stride = array->stride;
+    const void *data = array->pointer;
+
+    if (info.same_type) {
+        /* No conversions needed, just dump the data from the array directly
+         * into the GX pipe. */
+        if (vbo) {
+            new (reader) DirectVboReader(info.format, vbo, data, stride);
+            return reader;
+        }
+        switch (type) {
+        case GL_UNSIGNED_BYTE:
+            new (reader) SameTypeVertexReader<int8_t>(
+                info.format, vbo, data, stride);
+            return reader;
+        case GL_SHORT:
+            new (reader) SameTypeVertexReader<int16_t>(
+                info.format, vbo, data, stride);
+            return reader;
+        case GL_INT:
+            new (reader) SameTypeVertexReader<int32_t>(
+                info.format, vbo, data, stride);
+            return reader;
+        case GL_FLOAT:
+            new (reader) SameTypeVertexReader<float>(
+                info.format, vbo, data, stride);
+            return reader;
+        }
+    }
+
+    if (attribute == GX_VA_CLR0 || attribute == GX_VA_CLR1) {
+        switch (type) {
+        /* The case GL_UNSIGNED_BYTE is handled by the SameTypeVertexReader */
+        case GL_BYTE:
+            new (reader) ColorVertexReader<char>(info.format, vbo, data, stride);
+            return reader;
+        case GL_SHORT:
+            new (reader) ColorVertexReader<int16_t>(info.format, vbo, data, stride);
+            return reader;
+        case GL_INT:
+            new (reader) ColorVertexReader<int32_t>(info.format, vbo, data, stride);
+            return reader;
+        case GL_FLOAT:
+            new (reader) ColorVertexReader<float>(info.format, vbo, data, stride);
+            return reader;
+        case GL_DOUBLE:
+            new (reader) ColorVertexReader<double>(info.format, vbo, data, stride);
+            return reader;
+        }
+    }
+
+    /* We can use the CoordVertexReader not only for positional
+     * coordinates, but also for normals and texture coordinates because
+     * the GX_Position*() functions are just storing floats into the GX
+     * pipe (that is, GX_Position2f32() behaves exactly like
+     * GX_TexCoord2f32()). */
+    switch (type) {
+    case GL_BYTE:
+        new (reader) CoordVertexReader<char>(info.format, vbo, data, stride);
+        return reader;
+    case GL_SHORT:
+        new (reader) CoordVertexReader<int16_t>(info.format, vbo, data, stride);
+        return reader;
+    case GL_INT:
+        new (reader) CoordVertexReader<int32_t>(info.format, vbo, data, stride);
+        return reader;
+    case GL_FLOAT:
+        new (reader) CoordVertexReader<float>(info.format, vbo, data, stride);
+        return reader;
+    case GL_DOUBLE:
+        new (reader) CoordVertexReader<double>(info.format, vbo, data, stride);
+        return reader;
+    }
+
+    warning("Unknown array data type %x for attribute %d\n",
+            type, attribute);
+    return NULL;
+}
+
+OgxArrayReader *_ogx_array_add_generator_fv(uint8_t attribute, int size,
+                                            OgxGenerator_fv generator)
+{
+    assert(attribute == GX_VA_TEX0);
+    TemplateSelectionInfo info = select_template(GL_FLOAT, attribute, size);
+    OgxArrayReader *reader = allocate_reader_for_format(&info.format);
+    if (!reader) return NULL;
+
+    new (reader) GeneratorVertexReader(info.format, generator);
+    s_num_tex_coords++;
+    return reader;
+}
+
+OgxArrayReader *_ogx_array_reader_next(OgxArrayReader *reader)
+{
+    /* TODO: rewrite this once we'll store all readers in a single list or
+     * array */
+    if (!reader) return &glparamstate.vertex_reader;
+    if (reader == &glparamstate.vertex_reader) {
+        reader = &glparamstate.normal_reader;
+        if (s_has_normals) return reader;
+    }
+    if (reader == &glparamstate.normal_reader) {
+        reader = &glparamstate.color_reader[0];
+        if (s_num_colors > 0) return reader;
+    }
+    if (reader == &glparamstate.color_reader[0]) {
+        reader = &glparamstate.color_reader[1];
+        if (s_num_colors >= 2) return reader;
+    }
+    if (reader == &glparamstate.color_reader[1]) {
+        reader = &glparamstate.texcoord_reader[0];
+        if (s_num_tex_arrays > 0) return reader;
+    }
+    for (int i = 0; i < MAX_TEXCOORD_ARRAYS - 1; i++) {
+        if (reader == &glparamstate.texcoord_reader[i]) {
+            if (s_num_tex_arrays > i) return reader + 1;
+        }
+    }
+    return NULL;
+}
+
+void _ogx_array_reader_get_format(OgxArrayReader *reader,
+                                  uint8_t *attribute, uint8_t *inputmode,
+                                  uint8_t *type, uint8_t *size)
+{
+    get_reader(reader)->get_format(attribute, inputmode, type, size);
 }

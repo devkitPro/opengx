@@ -192,6 +192,26 @@ static inline uint16_t send_draw_sync_token()
     return token;
 }
 
+static inline size_t sizeof_gl_type(GLenum type)
+{
+    switch (type) {
+    case GL_BYTE:
+    case GL_UNSIGNED_BYTE:
+        return 1;
+    case GL_SHORT:
+    case GL_UNSIGNED_SHORT:
+        return 2;
+    case GL_INT:
+    case GL_UNSIGNED_INT:
+    case GL_FLOAT:
+        return 4;
+    case GL_DOUBLE:
+        return 8;
+    default:
+        return 0;
+    }
+}
+
 typedef void (*ForeachCb)(GLuint value);
 
 
@@ -332,7 +352,7 @@ void _ogx_setup_2D_projection(void);
 void _ogx_setup_3D_projection(void);
 
 bool _ogx_setup_render_stages(void);
-void _ogx_update_vertex_array_readers(void);
+void _ogx_update_vertex_array_readers(OgxDrawMode mode);
 
 #ifdef __cplusplus
 } // extern C

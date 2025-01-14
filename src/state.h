@@ -62,12 +62,32 @@ extern "C" {
  * applications typically use much less. Also, one textured stage is used by
  * opengx when stencil is enabled. */
 #define MAX_TEXTURE_UNITS 4
+#define MAX_COLOR_ARRAYS 2 /* GX limit */
+/* The GX limit is 8, but we can have proxy arrays which generate texture
+ * coordinates from GX_VA_POS, GX_VA_NORM, etc.
+ * The choise of 10 is arbitrary here, we could set it up to 16
+ * (GX_TEVSTAGE15 - GX_TEVSTAGE0). */
+#define MAX_TEXCOORD_ARRAYS 10
+
+#define STATE_ARRAY(attribute) \
+    (glparamstate.arrays[OGX_ATTR_INDEX_##attribute])
+#define STATE_ARRAY_TEX(unit) \
+    (glparamstate.arrays[OGX_ATTR_INDEX_TEX0 + unit])
 
 typedef enum {
     OGX_HINT_NONE = 0,
     /* Enables fast (but wrong) GPU-accelerated GL_SPHERE_MAP */
     OGX_HINT_FAST_SPHERE_MAP = 1 << 0,
 } OgxHints;
+
+typedef enum {
+    OGX_ATTR_INDEX_POS = 0,
+    OGX_ATTR_INDEX_NRM,
+    OGX_ATTR_INDEX_CLR,
+    OGX_ATTR_INDEX_TEX0,
+    OGX_ATTR_INDEX_TEX_LAST = OGX_ATTR_INDEX_TEX0 + MAX_TEXTURE_UNITS - 1,
+    OGX_ATTR_INDEX_COUNT
+} OgxAttrIndex;
 
 typedef struct {
     Pos3f pos;
@@ -106,6 +126,7 @@ typedef struct {
     float texture_eye_plane_t[4];
     float texture_object_plane_s[4];
     float texture_object_plane_t[4];
+    OgxArrayReader *array_reader;
     /* There should be 4 of these (for S, T, R, Q) but GX uses a single
      * transformation for all of them */
     uint16_t gen_mode;
@@ -181,14 +202,14 @@ typedef struct glparams_
     uint16_t hit_count;
 
     void *index_array;
-    OgxVertexAttribArray vertex_array, normal_array, color_array;
-    OgxVertexAttribArray texcoord_array[MAX_TEXTURE_UNITS];
+    OgxVertexAttribArray arrays[OGX_ATTR_INDEX_COUNT];
     /* The OgxArrayReader are not really part of the state (the
      * OgxVertexAttribArray elements carry the authoritative information on the
      * vertex attribute arrays), they are meant to be used as a cache for the
      * drawing operations. */
-    OgxArrayReader vertex_reader, normal_reader, color_reader;
-    OgxArrayReader texcoord_reader[MAX_TEXTURE_UNITS];
+    OgxArrayReader vertex_reader, normal_reader;
+    OgxArrayReader color_reader[MAX_COLOR_ARRAYS];
+    OgxArrayReader texcoord_reader[MAX_TEXCOORD_ARRAYS];
     union client_state
     {
         struct {

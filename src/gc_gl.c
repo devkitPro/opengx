@@ -55,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "selection.h"
 #include "state.h"
 #include "stencil.h"
+#include "texture_gen_sw.h"
 #include "texture_unit.h"
 #include "utils.h"
 #include "vbo.h"
@@ -81,6 +82,7 @@ uint16_t _ogx_draw_sync_token = 0;
 static OgxEfbBuffer *s_efb_scene_buffer = NULL;
 static GXTexObj s_zbuffer_texture;
 static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
+static bool s_point_sprites_was_enabled = false;
 /* Force the inclusion of functions.c's TU in the build when GL functions are
  * used. In this way, if a client library (such as SDL) defines weak symbols
  * for the opengx functions it uses, a client application which actually uses
@@ -572,6 +574,7 @@ void glEnable(GLenum cap)
         break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
@@ -582,6 +585,7 @@ void glEnable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled |= (1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
@@ -632,6 +636,7 @@ void glEnable(GLenum cap)
         break;
     case GL_POINT_SPRITE:
         glparamstate.point_sprites_enabled = 1;
+        glparamstate.dirty.bits.dirty_attributes = 1;
         break;
     case GL_POLYGON_OFFSET_FILL:
         glparamstate.polygon_offset_fill = 1;
@@ -653,6 +658,7 @@ void glDisable(GLenum cap)
         break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
@@ -663,6 +669,7 @@ void glDisable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled &= ~(1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
@@ -991,38 +998,34 @@ void glEnd()
     union client_state cs_backup = glparamstate.cs;
     VertexData *base = glparamstate.imm_mode.current_vertices;
     int stride = sizeof(VertexData);
-    OgxVertexAttribArray array;
-    array.size = 2;
-    array.type = GL_FLOAT;
-    array.stride = stride;
-    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-        if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
-            array.pointer = base->tex[i];
-            _ogx_array_reader_init(&glparamstate.texcoord_reader[i],
-                                   GX_VA_TEX0 + i, &array);
-        }
+
+    OgxVertexAttribArray arrays_backup[OGX_ATTR_INDEX_COUNT];
+    memcpy(arrays_backup, glparamstate.arrays, sizeof(arrays_backup));
+
+    glVertexPointer(3, GL_FLOAT, stride, base->pos);
+
+    if (glparamstate.imm_mode.has_normal) {
+        glNormalPointer(GL_FLOAT, stride, base->norm);
     }
 
-    array.size = 4;
-    array.type = GL_UNSIGNED_BYTE;
-    array.pointer = &base->color;
-    _ogx_array_reader_init(&glparamstate.color_reader, GX_VA_CLR0, &array);
+    if (glparamstate.imm_mode.has_color) {
+        glColorPointer(4, GL_UNSIGNED_BYTE, stride, &base->color);
+    }
 
-    array.size = 3;
-    array.type = GL_FLOAT;
-    array.pointer = base->norm;
-    _ogx_array_reader_init(&glparamstate.normal_reader, GX_VA_NRM, &array);
-
-    array.pointer = base->pos;
-    _ogx_array_reader_init(&glparamstate.vertex_reader, GX_VA_POS, &array);
+    for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+        if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
+            glparamstate.cs.active_texture = i;
+            glTexCoordPointer(2, GL_FLOAT, stride, base->tex[i]);
+        }
+    }
 
     glparamstate.cs.texcoord_enabled = glparamstate.imm_mode.has_texcoord;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
     glparamstate.cs.normal_enabled = glparamstate.imm_mode.has_normal;
     glparamstate.cs.vertex_enabled = 1;
-    glparamstate.dirty.bits.dirty_attributes = 0;
     glDrawArrays(glparamstate.imm_mode.prim_type, 0, glparamstate.imm_mode.current_numverts);
     glparamstate.cs = cs_backup;
+    memcpy(glparamstate.arrays, arrays_backup, sizeof(arrays_backup));
     glparamstate.imm_mode.in_gl_begin = 0;
 
     glparamstate.dirty.bits.dirty_attributes = 1;
@@ -1657,6 +1660,7 @@ void glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha
 
 void glDisableClientState(GLenum cap)
 {
+    glparamstate.dirty.bits.dirty_attributes = 1;
     switch (cap) {
     case GL_COLOR_ARRAY:
         glparamstate.cs.color_enabled = 0;
@@ -1684,6 +1688,7 @@ void glDisableClientState(GLenum cap)
 }
 void glEnableClientState(GLenum cap)
 {
+    glparamstate.dirty.bits.dirty_attributes = 1;
     switch (cap) {
     case GL_COLOR_ARRAY:
         glparamstate.cs.color_enabled = 1;
@@ -1712,49 +1717,49 @@ void glEnableClientState(GLenum cap)
 
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    glparamstate.vertex_array.size = size;
-    glparamstate.vertex_array.type = type;
-    glparamstate.vertex_array.stride = stride;
-    glparamstate.vertex_array.pointer = pointer;
+    STATE_ARRAY(POS).size = size;
+    STATE_ARRAY(POS).type = type;
+    STATE_ARRAY(POS).stride = stride;
+    STATE_ARRAY(POS).pointer = pointer;
     glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    glparamstate.normal_array.size = 3;
-    glparamstate.normal_array.type = type;
-    glparamstate.normal_array.stride = stride;
-    glparamstate.normal_array.pointer = pointer;
+    STATE_ARRAY(NRM).size = 3;
+    STATE_ARRAY(NRM).type = type;
+    STATE_ARRAY(NRM).stride = stride;
+    STATE_ARRAY(NRM).pointer = pointer;
     glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glColorPointer(GLint size, GLenum type,
                     GLsizei stride, const GLvoid *pointer)
 {
-    glparamstate.color_array.size = size;
-    glparamstate.color_array.type = type;
-    glparamstate.color_array.stride = stride;
-    glparamstate.color_array.pointer = pointer;
+    STATE_ARRAY(CLR).size = size;
+    STATE_ARRAY(CLR).type = type;
+    STATE_ARRAY(CLR).stride = stride;
+    STATE_ARRAY(CLR).pointer = pointer;
     glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
     int unit = glparamstate.cs.active_texture;
-    glparamstate.texcoord_array[unit].size = size;
-    glparamstate.texcoord_array[unit].type = type;
-    glparamstate.texcoord_array[unit].stride = stride;
-    glparamstate.texcoord_array[unit].pointer = pointer;
+    STATE_ARRAY_TEX(unit).size = size;
+    STATE_ARRAY_TEX(unit).type = type;
+    STATE_ARRAY_TEX(unit).stride = stride;
+    STATE_ARRAY_TEX(unit).pointer = pointer;
     glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
 {
-    OgxVertexAttribArray *vertex = &glparamstate.vertex_array;
-    OgxVertexAttribArray *normal = &glparamstate.normal_array;
-    OgxVertexAttribArray *color = &glparamstate.color_array;
+    OgxVertexAttribArray *vertex = &STATE_ARRAY(POS);
+    OgxVertexAttribArray *normal = &STATE_ARRAY(NRM);
+    OgxVertexAttribArray *color = &STATE_ARRAY(CLR);
     int unit = glparamstate.cs.active_texture;
-    OgxVertexAttribArray *texcoord = &glparamstate.texcoord_array[unit];
+    OgxVertexAttribArray *texcoord = &STATE_ARRAY_TEX(unit);
 
     glparamstate.cs.index_enabled = 0;
     glparamstate.cs.normal_enabled = 0;
@@ -2069,27 +2074,71 @@ static int count_color_channels()
     return color_provide;
 }
 
-void _ogx_update_vertex_array_readers()
+static inline bool point_sprites_texcoord_replace(uint8_t gxmode)
 {
+    return gxmode == GX_POINTS &&
+        glparamstate.point_sprites_enabled &&
+        glparamstate.point_sprites_coord_replace;
+}
+
+static inline bool point_sprites_changed(uint8_t gxmode)
+{
+    bool enabled = point_sprites_texcoord_replace(gxmode);
+    if (enabled != s_point_sprites_was_enabled) {
+        s_point_sprites_was_enabled = enabled;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void _ogx_update_vertex_array_readers(OgxDrawMode mode)
+{
+    _ogx_arrays_reset();
+
     if (glparamstate.cs.vertex_enabled) {
-        _ogx_array_reader_init(&glparamstate.vertex_reader, GX_VA_POS,
-                               &glparamstate.vertex_array);
+        _ogx_array_add(GX_VA_POS, &STATE_ARRAY(POS));
     }
 
     if (glparamstate.cs.normal_enabled) {
-        _ogx_array_reader_init(&glparamstate.normal_reader, GX_VA_NRM,
-                               &glparamstate.normal_array);
+        _ogx_array_add(GX_VA_NRM, &STATE_ARRAY(NRM));
     }
 
     if (glparamstate.cs.color_enabled) {
-        _ogx_array_reader_init(&glparamstate.color_reader, GX_VA_CLR0,
-                               &glparamstate.color_array);
+        int num_channels = count_color_channels();
+        for (int i = 0; i < num_channels; i++)
+            _ogx_array_add(GX_VA_CLR0, &STATE_ARRAY(CLR));
     }
 
     for (int unit = 0; unit < MAX_TEXTURE_UNITS; unit++) {
-        if (!glparamstate.cs.texcoord_enabled & (1 << unit)) continue;
-        _ogx_array_reader_init(&glparamstate.texcoord_reader[unit], GX_VA_TEX0,
-                               &glparamstate.texcoord_array[unit]);
+        if (!(glparamstate.texture_enabled & (1 << unit))) continue;
+
+        OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+
+        if (point_sprites_texcoord_replace(mode.mode)) {
+            /* We assume that GL_POINT_SPRITE_COORD_ORIGIN is set to
+             * GL_UPPER_LEFT */
+            float coords[2] = { 0.0f, 0.0f };
+            tu->array_reader =
+                _ogx_array_add_constant_fv(GX_VA_TEX0, 2, coords);
+        } else if (tu->gen_enabled &&
+                   _ogx_texture_gen_sw_enabled(unit)) {
+            /* Some kinds of texture generation cannot be performed by the GPU,
+             * and we have to generate the texture coordinates in software. */
+            OgxGenerator_fv generator = NULL;
+            switch (tu->gen_mode) {
+            case GL_SPHERE_MAP:
+                generator = _ogx_texture_gen_sw_sphere_map;
+                break;
+            }
+            tu->array_reader =
+                _ogx_array_add_generator_fv(GX_VA_TEX0, 2, generator);
+        } else if (glparamstate.cs.texcoord_enabled & (1 << unit)) {
+            tu->array_reader =
+                _ogx_array_add(GX_VA_TEX0, &STATE_ARRAY_TEX(unit));
+        } else {
+            tu->array_reader = NULL;
+        }
     }
 
     glparamstate.dirty.bits.dirty_attributes = 0;
@@ -2456,10 +2505,7 @@ static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data,
-                           false, /* no normals */
-                           false, /* no color */
-                           false /* no texturing */);
+    _ogx_arrays_setup_draw(data, OGX_DRAW_FLAG_FLAT);
     /* TODO: we could use C++ templates here too, to build more effective
      * drawing functions that only process the data we need. */
     draw_arrays_general(data);
@@ -2491,11 +2537,7 @@ static void flat_draw_elements(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data,
-                           false, /* no normals */
-                           false, /* no color */
-                           false /* no texturing */);
-
+    _ogx_arrays_setup_draw(data, OGX_DRAW_FLAG_FLAT);
     draw_elements_general(data);
 }
 
@@ -2503,8 +2545,13 @@ void glArrayElement(GLint i)
 {
     float value[3];
 
-    if (glparamstate.dirty.bits.dirty_attributes)
-        _ogx_update_vertex_array_readers();
+    if (glparamstate.dirty.bits.dirty_attributes) {
+        /* The draw mode is not really relevant here, since the actual drawing
+         * is performed in glEnd(), at which time we'll take care of handling
+         * point sprites (if enabled). */
+        OgxDrawMode mode = { GX_TRIANGLES, true };
+        _ogx_update_vertex_array_readers(mode);
+    }
 
     if (glparamstate.cs.normal_enabled) {
         _ogx_array_reader_read_norm3f(&glparamstate.normal_reader, i, value);
@@ -2521,7 +2568,7 @@ void glArrayElement(GLint i)
 
     if (glparamstate.cs.color_enabled) {
         GXColor color;
-        _ogx_array_reader_read_color(&glparamstate.color_reader, i, &color);
+        _ogx_array_reader_read_color(&glparamstate.color_reader[0], i, &color);
         glColor4ub(color.r, color.g, color.b, color.a);
     }
 
@@ -2535,10 +2582,7 @@ static bool setup_draw(const OgxDrawData *draw_data)
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
-    uint8_t texen = glparamstate.texture_enabled;
-    uint8_t color_provide = count_color_channels();
-    _ogx_arrays_setup_draw(draw_data,
-                           glparamstate.cs.normal_enabled, color_provide, texen);
+    _ogx_arrays_setup_draw(draw_data, OGX_DRAW_FLAG_NONE);
 
     /* Note that _ogx_setup_render_stages() uses some information from the
      * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
@@ -2557,8 +2601,10 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
     HANDLE_CALL_LIST(DRAW_ARRAYS, mode, first, count);
 
-    if (glparamstate.dirty.bits.dirty_attributes)
-        _ogx_update_vertex_array_readers();
+    if (glparamstate.dirty.bits.dirty_attributes ||
+        /* Point sprites need special handling */
+        point_sprites_changed(gxmode.mode))
+        _ogx_update_vertex_array_readers(gxmode);
 
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
@@ -2590,8 +2636,10 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
 
     HANDLE_CALL_LIST(DRAW_ELEMENTS, mode, count, type, indices);
 
-    if (glparamstate.dirty.bits.dirty_attributes)
-        _ogx_update_vertex_array_readers();
+    if (glparamstate.dirty.bits.dirty_attributes ||
+        /* Point sprites need special handling */
+        point_sprites_changed(gxmode.mode))
+        _ogx_update_vertex_array_readers(gxmode);
 
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();

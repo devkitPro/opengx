@@ -107,6 +107,14 @@ typedef struct
             union client_state cs;
             u32 list_size;
             void *gxlist;
+            struct AttribFormat {
+                unsigned attribute : 5;
+                /* Most of these only require 2-3 bits, but let's round it */
+                unsigned inputmode : 3;
+                unsigned comptype : 4;
+                unsigned compsize : 4;
+            } formats[4 + MAX_TEXTURE_UNITS]; /* 4: pos, norm, clr1 and clr2 */
+            #define CALL_LIST_DRAW_FORMATS(fmt) (sizeof(fmt) / sizeof(fmt[0]))
         } draw_geometry;
 
         float color[4];
@@ -231,12 +239,20 @@ static void setup_draw_geometry(struct DrawGeometry *dg,
         dg->count,
         /* The remaining fields are not used when drawing through lists */
     };
-    _ogx_arrays_setup_draw(&draw_data,
-                           dg->cs.normal_enabled,
-                           dg->cs.color_enabled ? 2 : 0,
-                           dg->cs.texcoord_enabled);
+    /* Setup the same vertex attribute descriptions that were in place when the
+     * list was created */
+    GX_ClearVtxDesc();
+    for (int i = 0; i < CALL_LIST_DRAW_FORMATS(dg->formats); i++) {
+        if (dg->formats[i].inputmode == GX_NONE) continue;
+        uint8_t attribute = dg->formats[i].attribute;
+        GX_SetVtxDesc(attribute, dg->formats[i].inputmode);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, attribute,
+                         dg->formats[i].comptype, dg->formats[i].compsize, 0);
+    }
+
     if (!dg->cs.normal_enabled) {
         GX_SetVtxDesc(GX_VA_NRM, GX_INDEX8);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
         GX_SetArray(GX_VA_NRM, s_current_normal, 12);
         floatcpy(s_current_normal, glparamstate.imm_mode.current_normal, 3);
         /* Not needed on Dolphin, but it is on a Wii */
@@ -245,6 +261,8 @@ static void setup_draw_geometry(struct DrawGeometry *dg,
     if (!dg->cs.color_enabled) {
         GX_SetVtxDesc(GX_VA_CLR0, GX_INDEX8);
         GX_SetVtxDesc(GX_VA_CLR1, GX_INDEX8);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGB8, 0);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR1, GX_CLR_RGBA, GX_RGB8, 0);
         s_current_color = current_color;
         GX_SetArray(GX_VA_CLR0, &s_current_color, 4);
         GX_SetArray(GX_VA_CLR1, &s_current_color, 4);
@@ -434,10 +452,21 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     dg->count = count + gxmode.loop;
 
     if (glparamstate.dirty.bits.dirty_attributes)
-        _ogx_update_vertex_array_readers();
+        _ogx_update_vertex_array_readers(gxmode);
 
-    if (dg->cs.color_enabled) {
-        _ogx_array_reader_enable_dup_color(&glparamstate.color_reader, true);
+    /* Get the GX formats used right now */
+    OgxArrayReader *reader = NULL;
+    int format_index = 0;
+    memset(dg->formats, 0, sizeof(dg->formats));
+    while (reader = _ogx_array_reader_next(reader)) {
+        uint8_t attribute, inputmode, size, type;
+        _ogx_array_reader_get_format(reader, &attribute, &inputmode,
+                                     &type, &size);
+        dg->formats[format_index].attribute = attribute;
+        dg->formats[format_index].inputmode = inputmode;
+        dg->formats[format_index].comptype = type;
+        dg->formats[format_index].compsize = size;
+        format_index++;
     }
 
     GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
@@ -456,11 +485,13 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
             GX_Normal1x8(0);
         }
 
+        /* The color data is duplicated to CLR0 and CLR1 */
         if (dg->cs.color_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.color_reader, index);
+            _ogx_array_reader_process_element(&glparamstate.color_reader[0], index);
+            _ogx_array_reader_process_element(&glparamstate.color_reader[0], index);
         } else {
-            GX_Color1x8(0); // CLR0
-            GX_Color1x8(0); // CLR1
+            GX_Color1x8(0);
+            GX_Color1x8(0);
         }
 
         for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {

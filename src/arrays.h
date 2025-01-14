@@ -47,22 +47,16 @@ typedef struct {
     uint32_t reader[6];
 } OgxArrayReader;
 
-void _ogx_array_reader_init(OgxArrayReader *reader,
-                            uint8_t vertex_attribute,
-                            const OgxVertexAttribArray *attr_data);
-void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
-                            bool has_normals, uint8_t num_colors,
-                            uint8_t tex_unit_mask);
-/* Get the mask of units having texture coordinates. This is not necessarily
- * the same as glparamstate.cs.texcoord_enabled, because we might have
- * generated more arrays via software if the mode is not supported by the
- * hardware (GL_SPHERE_MAP) */
-uint8_t _ogx_arrays_get_units_with_tex_coord();
+typedef enum {
+    OGX_DRAW_FLAG_NONE = 0,
+    OGX_DRAW_FLAG_FLAT = 1 << 0,
+} OgxDrawFlags;
+
+void _ogx_arrays_setup_draw(const OgxDrawData *draw_data, OgxDrawFlags flags);
+
 void _ogx_arrays_process_element(int index);
 /* Any memory allocated by the OgxArrayReader objects can be released. */
 void _ogx_arrays_draw_done();
-void _ogx_array_reader_enable_dup_color(OgxArrayReader *reader,
-                                        bool dup_color);
 void _ogx_array_reader_process_element(OgxArrayReader *reader, int index);
 uint8_t _ogx_array_reader_get_tex_coord_source(OgxArrayReader *reader);
 
@@ -74,6 +68,31 @@ void _ogx_array_reader_read_tex2f(OgxArrayReader *reader,
                                   int index, float *tex);
 void _ogx_array_reader_read_color(OgxArrayReader *reader,
                                   int index, GXColor *color);
+
+void _ogx_arrays_reset(void);
+OgxArrayReader *_ogx_array_add_constant_fv(uint8_t attribute, int size,
+                                           const float *values);
+OgxArrayReader *_ogx_array_add(uint8_t attribute,
+                               const OgxVertexAttribArray *array);
+
+typedef void (*OgxGenerator_fv)(int index, float *values_out);
+OgxArrayReader *_ogx_array_add_generator_fv(uint8_t attribute, int size,
+                                            OgxGenerator_fv generator);
+
+/* Enumerate active array readers. Start by passing NULL, then pass the reader
+ * obtained from the previous call, until this returns NULL.
+ */
+OgxArrayReader *_ogx_array_reader_next(OgxArrayReader *reader);
+
+/* This returns the libogc constants describing the vertex format:
+ * - attribute: libogc's vtxattr
+ * - inputmode: libogc's vtxattrin
+ * - type: libogc's comptype
+ * - size: libogc's comptype
+ */
+void _ogx_array_reader_get_format(OgxArrayReader *reader,
+                                  uint8_t *attribute, uint8_t *inputmode,
+                                  uint8_t *type, uint8_t *size);
 
 #ifdef __cplusplus
 } // extern C
