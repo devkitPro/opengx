@@ -179,7 +179,7 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
         return;
     case GL_PACK_SWAP_BYTES:
         *params = glparamstate.pack_swap_bytes;
-        break;
+        return;
     case GL_RGBA_MODE:
         *params = GL_TRUE;
         return;
@@ -188,7 +188,7 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
         return;
     case GL_UNPACK_LSB_FIRST:
         *params = glparamstate.unpack_lsb_first;
-        break;
+        return;
     case GL_UNPACK_SWAP_BYTES:
         *params = glparamstate.unpack_swap_bytes;
         return;
