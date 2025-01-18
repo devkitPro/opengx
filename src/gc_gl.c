@@ -2553,27 +2553,30 @@ void glArrayElement(GLint i)
         _ogx_update_vertex_array_readers(mode);
     }
 
-    if (glparamstate.cs.normal_enabled) {
-        _ogx_array_reader_read_norm3f(&glparamstate.normal_reader, i, value);
+    OgxArrayReader *reader = _ogx_array_reader_for_attribute(GX_VA_NRM);
+    if (reader) {
+        _ogx_array_reader_read_norm3f(reader, i, value);
         glNormal3fv(value);
     }
 
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-        if (glparamstate.cs.texcoord_enabled & (1 << tex)) {
-            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_reader[tex],
-                                         i, value);
+        reader = _ogx_array_reader_for_attribute(GX_VA_TEX0 + tex);
+        if (reader) {
+            _ogx_array_reader_read_tex2f(reader, i, value);
             glMultiTexCoord2fv(GL_TEXTURE0 + tex, value);
         }
     }
 
-    if (glparamstate.cs.color_enabled) {
+    reader = _ogx_array_reader_for_attribute(GX_VA_CLR0);
+    if (reader) {
         GXColor color;
-        _ogx_array_reader_read_color(&glparamstate.color_reader[0], i, &color);
+        _ogx_array_reader_read_color(reader, i, &color);
         glColor4ub(color.r, color.g, color.b, color.a);
     }
 
-    if (glparamstate.cs.vertex_enabled) {
-        _ogx_array_reader_read_pos3f(&glparamstate.vertex_reader, i, value);
+    reader = _ogx_array_reader_for_attribute(GX_VA_POS);
+    if (reader) {
+        _ogx_array_reader_read_pos3f(reader, i, value);
         glVertex3fv(value);
     }
 }

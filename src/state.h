@@ -203,13 +203,6 @@ typedef struct glparams_
 
     void *index_array;
     OgxVertexAttribArray arrays[OGX_ATTR_INDEX_COUNT];
-    /* The OgxArrayReader are not really part of the state (the
-     * OgxVertexAttribArray elements carry the authoritative information on the
-     * vertex attribute arrays), they are meant to be used as a cache for the
-     * drawing operations. */
-    OgxArrayReader vertex_reader, normal_reader;
-    OgxArrayReader color_reader[MAX_COLOR_ARRAYS];
-    OgxArrayReader texcoord_reader[MAX_TEXCOORD_ARRAYS];
     union client_state
     {
         struct {

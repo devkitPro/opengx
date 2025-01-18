@@ -73,9 +73,9 @@ bool _ogx_texture_gen_sw_enabled(uint8_t unit)
 void _ogx_texture_gen_sw_sphere_map(int index, Tex2f out)
 {
     guVector pos, normal;
-    _ogx_array_reader_read_pos3f(&glparamstate.vertex_reader,
+    _ogx_array_reader_read_pos3f(_ogx_array_reader_for_attribute(GX_VA_POS),
                                  index, (float *)&pos);
-    _ogx_array_reader_read_norm3f(&glparamstate.normal_reader,
+    _ogx_array_reader_read_norm3f(_ogx_array_reader_for_attribute(GX_VA_NRM),
                                   index, (float *)&normal);
     /* Transform coordinates to eye-space */
     guVecMultiply(glparamstate.modelview_matrix, &pos, &pos);

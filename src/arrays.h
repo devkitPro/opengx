@@ -84,6 +84,10 @@ OgxArrayReader *_ogx_array_add_generator_fv(uint8_t attribute, int size,
  */
 OgxArrayReader *_ogx_array_reader_next(OgxArrayReader *reader);
 
+/* Get the n-th array for the given attribute. NULL is returned if no array was
+ * added for the given attribute. */
+OgxArrayReader *_ogx_array_reader_for_attribute(uint8_t attribute);
+
 /* This returns the libogc constants describing the vertex format:
  * - attribute: libogc's vtxattr
  * - inputmode: libogc's vtxattrin

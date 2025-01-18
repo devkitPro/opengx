@@ -454,6 +454,11 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     if (glparamstate.dirty.bits.dirty_attributes)
         _ogx_update_vertex_array_readers(gxmode);
 
+    OgxArrayReader *vertex_reader = NULL;
+    OgxArrayReader *normal_reader = NULL;
+    OgxArrayReader *color_reader = NULL;
+    OgxArrayReader *texcoord_reader[MAX_TEXTURE_UNITS] = { NULL };
+
     /* Get the GX formats used right now */
     OgxArrayReader *reader = NULL;
     int format_index = 0;
@@ -467,6 +472,18 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
         dg->formats[format_index].comptype = type;
         dg->formats[format_index].compsize = size;
         format_index++;
+
+        if (attribute == GX_VA_POS) {
+            vertex_reader = reader;
+        } else if (attribute == GX_VA_NRM) {
+            normal_reader = reader;
+        } else if (attribute == GX_VA_CLR0) {
+            /* Ignore CLR1, since, if present, it's identical */
+            color_reader = reader;
+        } else if (attribute >= GX_VA_TEX0 &&
+                   attribute < GX_VA_TEX0 + MAX_TEXTURE_UNITS) {
+            texcoord_reader[attribute - GX_VA_TEX0] = reader;
+        }
     }
 
     GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
@@ -477,27 +494,26 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     for (int i = 0; i < dg->count; i++) {
         int index = index_cb(i % count, index_data);
         float value[4];
-        _ogx_array_reader_process_element(&glparamstate.vertex_reader, index);
+        _ogx_array_reader_process_element(vertex_reader, index);
 
-        if (dg->cs.normal_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.normal_reader, index);
+        if (normal_reader) {
+            _ogx_array_reader_process_element(normal_reader, index);
         } else {
             GX_Normal1x8(0);
         }
 
         /* The color data is duplicated to CLR0 and CLR1 */
-        if (dg->cs.color_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.color_reader[0], index);
-            _ogx_array_reader_process_element(&glparamstate.color_reader[0], index);
+        if (color_reader) {
+            _ogx_array_reader_process_element(color_reader, index);
+            _ogx_array_reader_process_element(color_reader, index);
         } else {
             GX_Color1x8(0);
             GX_Color1x8(0);
         }
 
         for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-            if (dg->cs.texcoord_enabled & (1 << tex)) {
-                _ogx_array_reader_process_element(
-                    &glparamstate.texcoord_reader[tex], index);
+            if (texcoord_reader[tex]) {
+                _ogx_array_reader_process_element(texcoord_reader[tex], index);
             }
         }
     }

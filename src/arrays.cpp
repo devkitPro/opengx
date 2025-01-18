@@ -44,6 +44,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #define MAX_TEXCOORDS 8 /* GX_VA_TEX7 - GX_VA_TEX8 */
 
+OgxArrayReader s_vertex_reader, s_normal_reader;
+OgxArrayReader s_color_reader[MAX_COLOR_ARRAYS];
+OgxArrayReader s_texcoord_reader[MAX_TEXCOORD_ARRAYS];
+
 /* The difference between s_num_tex_arrays and s_num_tex_coords is that the
  * former is used to count the number of active OgxArrayReader elements; but
  * not all of them consume a tex coordinate, because TexCoordProxyVertexReader
@@ -599,7 +603,7 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
 
     s_draw_flags = flags;
 
-    VertexReaderBase *vertex_reader = get_reader(&glparamstate.vertex_reader);
+    VertexReaderBase *vertex_reader = get_reader(&s_vertex_reader);
     vertex_reader->setup_draw();
 
     if (flags & OGX_DRAW_FLAG_FLAT)
@@ -607,56 +611,56 @@ void _ogx_arrays_setup_draw(const OgxDrawData *draw_data,
 
     VertexReaderBase *normal_reader = nullptr;
     if (s_has_normals) {
-        normal_reader = get_reader(&glparamstate.normal_reader);
+        normal_reader = get_reader(&s_normal_reader);
         normal_reader->setup_draw();
     }
 
     for (int i = 0; i < s_num_colors; i++) {
-        VertexReaderBase *r = get_reader(&glparamstate.color_reader[i]);
+        VertexReaderBase *r = get_reader(&s_color_reader[i]);
         r->setup_draw();
     }
 
     for (int i = 0; i < s_num_tex_arrays; i++) {
-        VertexReaderBase *r = get_reader(&glparamstate.texcoord_reader[i]);
+        VertexReaderBase *r = get_reader(&s_texcoord_reader[i]);
         r->setup_draw();
     }
 }
 
 void _ogx_arrays_process_element(int index)
 {
-    get_reader(&glparamstate.vertex_reader)->process_element(index);
+    get_reader(&s_vertex_reader)->process_element(index);
 
     if (s_draw_flags & OGX_DRAW_FLAG_FLAT)
         return; /* No more attributes are needed */
 
     if (s_has_normals) {
-        get_reader(&glparamstate.normal_reader)->process_element(index);
+        get_reader(&s_normal_reader)->process_element(index);
     }
 
     for (int i = 0; i < s_num_colors; i++) {
-        get_reader(&glparamstate.color_reader[i])->process_element(index);
+        get_reader(&s_color_reader[i])->process_element(index);
     }
 
     for (int i = 0; i < s_num_tex_arrays; i++) {
-        get_reader(&glparamstate.texcoord_reader[i])->
+        get_reader(&s_texcoord_reader[i])->
             process_element(index);
     }
 }
 
 void _ogx_arrays_draw_done()
 {
-    get_reader(&glparamstate.vertex_reader)->draw_done();
+    get_reader(&s_vertex_reader)->draw_done();
 
     if (s_has_normals) {
-        get_reader(&glparamstate.normal_reader)->draw_done();
+        get_reader(&s_normal_reader)->draw_done();
     }
 
     for (int i = 0; i < s_num_colors; i++) {
-        get_reader(&glparamstate.color_reader[i])->draw_done();
+        get_reader(&s_color_reader[i])->draw_done();
     }
 
     for (int i = 0; i < s_num_tex_arrays; i++) {
-        get_reader(&glparamstate.texcoord_reader[i])->draw_done();
+        get_reader(&s_texcoord_reader[i])->draw_done();
     }
 }
 
@@ -703,18 +707,18 @@ static OgxArrayReader *allocate_reader_for_format(GxVertexFormat *format)
 {
     switch (format->attribute) {
     case GX_VA_POS:
-        return &glparamstate.vertex_reader;
+        return &s_vertex_reader;
     case GX_VA_NRM:
         s_has_normals = true;
-        return &glparamstate.normal_reader;
+        return &s_normal_reader;
     case GX_VA_CLR0:
         if (s_num_colors >= MAX_COLOR_ARRAYS) return NULL;
         format->attribute += s_num_colors;
-        return &glparamstate.color_reader[s_num_colors++];
+        return &s_color_reader[s_num_colors++];
     case GX_VA_TEX0:
         if (s_num_tex_arrays >= MAX_TEXCOORD_ARRAYS) return NULL;
         format->attribute += s_num_tex_coords;
-        return &glparamstate.texcoord_reader[s_num_tex_arrays++];
+        return &s_texcoord_reader[s_num_tex_arrays++];
     }
     return NULL;
 }
@@ -754,11 +758,11 @@ OgxArrayReader *_ogx_array_add(uint8_t attribute, const OgxVertexAttribArray *ar
          * matrix). So, at least in those cases where these arrays coincide, we
          * can support having three texture input coordinates. */
         OgxArrayReader *source_reader;
-        if (get_reader(&glparamstate.vertex_reader)->has_same_data(array)) {
-            source_reader = &glparamstate.vertex_reader;
+        if (get_reader(&s_vertex_reader)->has_same_data(array)) {
+            source_reader = &s_vertex_reader;
         } else if (s_has_normals &&
-                   get_reader(&glparamstate.normal_reader)->has_same_data(array)) {
-            source_reader = &glparamstate.normal_reader;
+                   get_reader(&s_normal_reader)->has_same_data(array)) {
+            source_reader = &s_normal_reader;
         } else {
             /* We could go on and check if this array has the same data of
              * another texture array sent earlier in this same loop, but let's
@@ -875,29 +879,45 @@ OgxArrayReader *_ogx_array_reader_next(OgxArrayReader *reader)
 {
     /* TODO: rewrite this once we'll store all readers in a single list or
      * array */
-    if (!reader) return &glparamstate.vertex_reader;
-    if (reader == &glparamstate.vertex_reader) {
-        reader = &glparamstate.normal_reader;
+    if (!reader) return &s_vertex_reader;
+    if (reader == &s_vertex_reader) {
+        reader = &s_normal_reader;
         if (s_has_normals) return reader;
     }
-    if (reader == &glparamstate.normal_reader) {
-        reader = &glparamstate.color_reader[0];
+    if (reader == &s_normal_reader) {
+        reader = &s_color_reader[0];
         if (s_num_colors > 0) return reader;
     }
-    if (reader == &glparamstate.color_reader[0]) {
-        reader = &glparamstate.color_reader[1];
+    if (reader == &s_color_reader[0]) {
+        reader = &s_color_reader[1];
         if (s_num_colors >= 2) return reader;
     }
-    if (reader == &glparamstate.color_reader[1]) {
-        reader = &glparamstate.texcoord_reader[0];
+    if (reader == &s_color_reader[1]) {
+        reader = &s_texcoord_reader[0];
         if (s_num_tex_arrays > 0) return reader;
     }
     for (int i = 0; i < MAX_TEXCOORD_ARRAYS - 1; i++) {
-        if (reader == &glparamstate.texcoord_reader[i]) {
+        if (reader == &s_texcoord_reader[i]) {
             if (s_num_tex_arrays > i) return reader + 1;
         }
     }
     return NULL;
+}
+
+OgxArrayReader *_ogx_array_reader_for_attribute(uint8_t attribute)
+{
+    int n;
+    switch (attribute) {
+    case GX_VA_POS: return &s_vertex_reader;
+    case GX_VA_NRM: return s_has_normals ? &s_normal_reader : NULL;
+    case GX_VA_CLR0:
+    case GX_VA_CLR1:
+        n = attribute - GX_VA_CLR0;
+        return s_num_colors > n ? &s_color_reader[n] : NULL;
+    default: /* This can only be a GX_VA_TEX* */
+        n = attribute - GX_VA_TEX0;
+        return s_num_tex_arrays > n ? &s_texcoord_reader[n] : NULL;
+    }
 }
 
 void _ogx_array_reader_get_format(OgxArrayReader *reader,
