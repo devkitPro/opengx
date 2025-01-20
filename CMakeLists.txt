@@ -38,6 +38,8 @@ add_library(${TARGET} STATIC
     src/gpu_resources.h
     src/image_DXT.c
     src/image_DXT.h
+    src/murmurhash3.cpp
+    src/murmurhash3.h
     src/opengx.h
     src/pixel_stream.cpp
     src/pixel_stream.h
