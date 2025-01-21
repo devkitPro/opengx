@@ -3,6 +3,7 @@ project(OpenGX VERSION 0.1)
 
 option(BUILD_OPENGX "Build the opengx library" ON)
 option(BUILD_DOCS "Build the documentation" OFF)
+option(BUILD_EXAMPLES "Build the examples" OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -94,4 +95,8 @@ endif(BUILD_OPENGX)
 if(BUILD_DOCS)
     include(UseLATEX)
     add_subdirectory(doc/src)
+endif()
+
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()
