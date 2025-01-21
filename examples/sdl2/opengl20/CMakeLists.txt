@@ -1,0 +1,14 @@
+set(EXTRA_FILES)
+set(EXTRA_LIBS)
+if(CMAKE_SYSTEM_NAME MATCHES "NintendoWii|NintendoGameCube")
+    list(APPEND EXTRA_LIBS opengx)
+else()
+    list(APPEND EXTRA_LIBS PkgConfig::OPENGL)
+endif()
+
+macro(add_example name)
+    add_executable(${name} ${EXTRA_FILES} ${ARGN})
+    target_link_libraries(${name} ${EXTRA_LIBS} m PkgConfig::SDL2)
+endmacro()
+
+add_example(gl2gears gl2gears.c)
