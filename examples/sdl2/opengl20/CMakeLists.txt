@@ -1,6 +1,7 @@
 set(EXTRA_FILES)
 set(EXTRA_LIBS)
 if(CMAKE_SYSTEM_NAME MATCHES "NintendoWii|NintendoGameCube")
+    list(APPEND EXTRA_FILES opengx_shaders.c)
     list(APPEND EXTRA_LIBS opengx)
 else()
     list(APPEND EXTRA_LIBS PkgConfig::OPENGL)
