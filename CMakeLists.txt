@@ -73,6 +73,7 @@ set_target_properties(${TARGET} PROPERTIES
 )
 
 target_include_directories(${TARGET} PUBLIC
+    src/
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
