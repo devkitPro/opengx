@@ -114,6 +114,7 @@ static SDL_Window * window = NULL;
 static SDL_GLContext gl_context = NULL;
 /** Should the main loop be running? */
 static SDL_bool app_running = SDL_TRUE;
+static SDL_Joystick *joystick = NULL;
 
 #if !defined(__GLIBC__) && !defined(__NEWLIB__)
 /**
@@ -619,6 +620,11 @@ gears_event(SDL_Event * event)
                 }
                 break;
             }
+
+        case SDL_JOYDEVICEADDED:
+            /* Of course, we should dispose the old one, etc etc :-) */
+            joystick = SDL_JoystickOpen(event->jdevice.which);
+            break;
     }
 }
 
@@ -651,6 +657,15 @@ gears_idle(void)
                 fps);
         tRate0 = t;
         frames = 0;
+    }
+
+    if (joystick) {
+        float amount = dt * 100;
+        Uint8 hat = SDL_JoystickGetHat(joystick, 0);
+        if (hat & SDL_HAT_LEFT) view_rot[1] += amount;
+        if (hat & SDL_HAT_RIGHT) view_rot[1] -= amount;
+        if (hat & SDL_HAT_UP) view_rot[0] += amount;
+        if (hat & SDL_HAT_DOWN) view_rot[0] -= amount;
     }
 }
 
@@ -779,7 +794,7 @@ main(int argc, char *argv[])
         SDL_SetMainReady();
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK) != 0) {
         SDL_Log("Unable to initialize SDL video subsystem: %s\n", SDL_GetError());
         return 1;
     }
