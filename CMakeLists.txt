@@ -77,7 +77,7 @@ install(TARGETS ${TARGET}
     RUNTIME
     PUBLIC_HEADER
 )
-install(DIRECTORY "include/GL" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(DIRECTORY "include/GL" "include/KHR" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/opengl.pc
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 install(FILES OpenGLConfig.cmake
