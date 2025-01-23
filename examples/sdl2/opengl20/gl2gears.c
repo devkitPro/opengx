@@ -51,7 +51,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <SDL.h>
-#include <SDL_opengles2.h>
+#include <SDL_opengl.h>
 
 #ifndef _MSC_VER
 #include <unistd.h>
@@ -115,7 +115,7 @@ static SDL_GLContext gl_context = NULL;
 /** Should the main loop be running? */
 static SDL_bool app_running = SDL_TRUE;
 
-#ifndef __GLIBC__
+#if !defined(__GLIBC__) && !defined(__NEWLIB__)
 /**
  * sincos() for platforms that do not support it.
  */
@@ -698,6 +698,10 @@ gears_init(void)
     const char *p;
     char msg[512];
 
+#if defined(__wii__) || defined(__gamecube__)
+    setup_opengx_shaders();
+#endif
+
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
@@ -785,10 +789,10 @@ main(int argc, char *argv[])
         window = SDL_CreateWindowFrom(native_window);
     } else {
         Uint32 window_flags = SDL_WINDOW_OPENGL;
-#if __IPHONEOS__ || __ANDROID__ || __WINRT__
+#if __IPHONEOS__ || __ANDROID__ || __WINRT__ || __wii__
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 #endif
-        window = SDL_CreateWindow("es2gears", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 300, 300, window_flags);
+        window = SDL_CreateWindow("es2gears", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, window_flags);
     }
 
     if (window == NULL) {
