@@ -708,7 +708,18 @@ OgxArrayReader *_ogx_array_add_constant_fv(uint8_t attribute, int size,
     TemplateSelectionInfo info = select_template(GL_FLOAT, attribute, size);
     OgxArrayReader *reader = allocate_reader_for_format(&info.format);
     if (!reader) return NULL;
-    new (reader) ConstantVertexReader(info.format, values);
+    if (attribute == GX_VA_CLR0) {
+        /* Colors cannot be passed as floats */
+        uint8_t color[4] = {
+            uint8_t(values[0] * 255.0f),
+            uint8_t(values[1] * 255.0f),
+            uint8_t(values[2] * 255.0f),
+            uint8_t(values[3] * 255.0f),
+        };
+        new (reader) ConstantVertexReader(info.format, color);
+    } else {
+        new (reader) ConstantVertexReader(info.format, values);
+    }
     if (attribute == GX_VA_TEX0)
         s_num_tex_coords++;
     return reader;
