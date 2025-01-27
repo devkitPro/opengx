@@ -371,32 +371,28 @@ protected:
 };
 
 struct VertexReaderBase: public AbstractVertexReader {
-    VertexReaderBase(GxVertexFormat format, VboType vbo, const void *data,
+    VertexReaderBase(GxVertexFormat format, const void *data,
                      int stride):
         AbstractVertexReader(format),
-        data(static_cast<const char *>(vbo ?
-                                       _ogx_vbo_get_data(vbo, data) : data)),
-        stride(stride), vbo(vbo) {}
+        data(static_cast<const char *>(data)),
+        stride(stride) {}
 
     void draw_done() override {}
 
     bool has_same_data(const OgxVertexAttribArray *array) const {
         int array_stride = compute_array_stride(array);
-        VboType array_vbo = glparamstate.bound_vbo_array;
-        const void *array_data = array_vbo ?
-            _ogx_vbo_get_data(array_vbo, array->pointer) : array->pointer;
+        const void *array_data = array->vbo ?
+            _ogx_vbo_get_data(array->vbo, array->pointer) : array->pointer;
         return data == array_data && stride == array_stride;
     }
 
     const char *data;
     uint16_t stride;
-    VboType vbo;
 };
 
 struct DirectVboReader: public VertexReaderBase {
-    DirectVboReader(GxVertexFormat format,
-                    VboType vbo, const void *data, int stride):
-        VertexReaderBase(format, vbo, data, stride ? stride : format.stride())
+    DirectVboReader(GxVertexFormat format, const void *data, int stride):
+        VertexReaderBase(format, data, stride ? stride : format.stride())
     {
     }
 
@@ -458,9 +454,9 @@ struct DirectVboReader: public VertexReaderBase {
 
 template <typename T>
 struct GenericVertexReader: public VertexReaderBase {
-    GenericVertexReader(GxVertexFormat format, VboType vbo, const void *data,
+    GenericVertexReader(GxVertexFormat format, const void *data,
                         int stride):
-        VertexReaderBase(format, vbo, data,
+        VertexReaderBase(format, data,
                          stride > 0 ? stride : sizeof(T) * format.num_components)
     {
     }
@@ -756,34 +752,34 @@ OgxArrayReader *_ogx_array_add(uint8_t attribute, const OgxVertexAttribArray *ar
         s_num_tex_coords++;
     }
 
-    VboType vbo = glparamstate.bound_vbo_array;
     GLenum type = array->type;
     int stride = array->stride;
-    const void *data = array->pointer;
+    const void *data = array->vbo ?
+        _ogx_vbo_get_data(array->vbo, array->pointer) : array->pointer;
 
     if (info.same_type) {
         /* No conversions needed, just dump the data from the array directly
          * into the GX pipe. */
-        if (vbo) {
-            new (reader) DirectVboReader(info.format, vbo, data, stride);
+        if (array->vbo) {
+            new (reader) DirectVboReader(info.format, data, stride);
             return reader;
         }
         switch (type) {
         case GL_UNSIGNED_BYTE:
             new (reader) SameTypeVertexReader<int8_t>(
-                info.format, vbo, data, stride);
+                info.format, data, stride);
             return reader;
         case GL_SHORT:
             new (reader) SameTypeVertexReader<int16_t>(
-                info.format, vbo, data, stride);
+                info.format, data, stride);
             return reader;
         case GL_INT:
             new (reader) SameTypeVertexReader<int32_t>(
-                info.format, vbo, data, stride);
+                info.format, data, stride);
             return reader;
         case GL_FLOAT:
             new (reader) SameTypeVertexReader<float>(
-                info.format, vbo, data, stride);
+                info.format, data, stride);
             return reader;
         }
     }
@@ -792,19 +788,19 @@ OgxArrayReader *_ogx_array_add(uint8_t attribute, const OgxVertexAttribArray *ar
         switch (type) {
         /* The case GL_UNSIGNED_BYTE is handled by the SameTypeVertexReader */
         case GL_BYTE:
-            new (reader) ColorVertexReader<char>(info.format, vbo, data, stride);
+            new (reader) ColorVertexReader<char>(info.format, data, stride);
             return reader;
         case GL_SHORT:
-            new (reader) ColorVertexReader<int16_t>(info.format, vbo, data, stride);
+            new (reader) ColorVertexReader<int16_t>(info.format, data, stride);
             return reader;
         case GL_INT:
-            new (reader) ColorVertexReader<int32_t>(info.format, vbo, data, stride);
+            new (reader) ColorVertexReader<int32_t>(info.format, data, stride);
             return reader;
         case GL_FLOAT:
-            new (reader) ColorVertexReader<float>(info.format, vbo, data, stride);
+            new (reader) ColorVertexReader<float>(info.format, data, stride);
             return reader;
         case GL_DOUBLE:
-            new (reader) ColorVertexReader<double>(info.format, vbo, data, stride);
+            new (reader) ColorVertexReader<double>(info.format, data, stride);
             return reader;
         }
     }
@@ -816,19 +812,19 @@ OgxArrayReader *_ogx_array_add(uint8_t attribute, const OgxVertexAttribArray *ar
      * GX_TexCoord2f32()). */
     switch (type) {
     case GL_BYTE:
-        new (reader) CoordVertexReader<char>(info.format, vbo, data, stride);
+        new (reader) CoordVertexReader<char>(info.format, data, stride);
         return reader;
     case GL_SHORT:
-        new (reader) CoordVertexReader<int16_t>(info.format, vbo, data, stride);
+        new (reader) CoordVertexReader<int16_t>(info.format, data, stride);
         return reader;
     case GL_INT:
-        new (reader) CoordVertexReader<int32_t>(info.format, vbo, data, stride);
+        new (reader) CoordVertexReader<int32_t>(info.format, data, stride);
         return reader;
     case GL_FLOAT:
-        new (reader) CoordVertexReader<float>(info.format, vbo, data, stride);
+        new (reader) CoordVertexReader<float>(info.format, data, stride);
         return reader;
     case GL_DOUBLE:
-        new (reader) CoordVertexReader<double>(info.format, vbo, data, stride);
+        new (reader) CoordVertexReader<double>(info.format, data, stride);
         return reader;
     }
 

@@ -641,6 +641,9 @@ void glGetVertexAttribiv(GLuint index, GLenum pname, GLint *params)
     if (!v) return;
 
     switch (pname) {
+    case GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING:
+        *params = v->array.vbo;
+        return;
     case GL_VERTEX_ATTRIB_ARRAY_ENABLED:
         *params = v->array_enabled;
         return;
@@ -911,6 +914,7 @@ void glVertexAttribPointer(GLuint index, GLint size, GLenum type,
     OgxVertexAttribState *v = &_ogx_shader_state.vertex_attribs[index];
     if (!v) return;
 
+    v->array.vbo = glparamstate.bound_vbo_array;
     v->array.size = size;
     v->array.type = type;
     v->array.normalized = normalized;

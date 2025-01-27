@@ -57,6 +57,9 @@ typedef struct _OgxVertexAttribArray {
     unsigned normalized : 1;
     unsigned size : 3; /* max is 4 */
     uint8_t stride;
+    /* This could be stored in a union with the "pointer" field, since 24 or 16
+     * bits are enough for the offset. TODO: evaluate if it's worth doing. */
+    VboType vbo;
     GLenum type;
     const void *pointer;
 } OgxVertexAttribArray;

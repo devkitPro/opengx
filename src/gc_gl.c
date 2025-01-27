@@ -1723,6 +1723,7 @@ void glEnableClientState(GLenum cap)
 
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(POS).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(POS).size = size;
     STATE_ARRAY(POS).type = type;
     STATE_ARRAY(POS).stride = stride;
@@ -1732,6 +1733,7 @@ void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *poin
 
 void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(NRM).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(NRM).size = 3;
     STATE_ARRAY(NRM).type = type;
     STATE_ARRAY(NRM).stride = stride;
@@ -1742,6 +1744,7 @@ void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 void glColorPointer(GLint size, GLenum type,
                     GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(CLR).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(CLR).size = size;
     STATE_ARRAY(CLR).type = type;
     STATE_ARRAY(CLR).stride = stride;
@@ -1752,6 +1755,7 @@ void glColorPointer(GLint size, GLenum type,
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
     int unit = glparamstate.cs.active_texture;
+    STATE_ARRAY_TEX(unit).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY_TEX(unit).size = size;
     STATE_ARRAY_TEX(unit).type = type;
     STATE_ARRAY_TEX(unit).stride = stride;
@@ -1773,6 +1777,7 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
     glparamstate.cs.vertex_enabled = 1; /* This is mandatory */
     glparamstate.cs.color_enabled = 0;
 
+    vertex->vbo = 0;
     vertex->type = GL_FLOAT;
     vertex->size = 3;
     color->type = GL_FLOAT;
@@ -1824,17 +1829,20 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
 
     const char *ptr = pointer;
     if (glparamstate.cs.texcoord_enabled) {
+        texcoord->vbo = 0;
         texcoord->pointer = ptr;
         texcoord->type = GL_FLOAT;
         texcoord->size = 2;
         ptr += 2 * sizeof(float);
     }
     if (glparamstate.cs.color_enabled) {
+        color->vbo = 0;
         color->pointer = ptr;
         /* TODO: use other type when implementing UB color support */
         ptr += color->size * sizeof(float);
     }
     if (glparamstate.cs.normal_enabled) {
+        normal->vbo = 0;
         normal->pointer = ptr;
         normal->type = GL_FLOAT;
         normal->size = 3;
