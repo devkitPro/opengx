@@ -91,6 +91,9 @@ void glGetUniformiv(GLuint program, GLint location, GLint *params)
         // fall through
     case GL_INT:
     case GL_UNSIGNED_INT:
+    case GL_SAMPLER_1D:
+    case GL_SAMPLER_2D:
+    case GL_SAMPLER_3D:
         params[0] = data->data.vec4i[0];
         break;
     case GL_BOOL_VEC4:
