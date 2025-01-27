@@ -67,6 +67,46 @@ static void gl2gears_setup_draw(GLuint program, const OgxDrawData *draw_data,
     GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
 }
 
+typedef struct {
+    GLint mvp_loc;
+    GLint tex_sampler_loc;
+} CubeTexData;
+
+static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
+                                void *user_data)
+{
+    CubeTexData *data = user_data;
+    float m[16];
+    glGetUniformfv(program, data->mvp_loc, m);
+    GLint texture_unit;
+    glGetUniformiv(program, data->tex_sampler_loc, &texture_unit);
+    ogx_set_mvp_matrix(m);
+
+    uint8_t tex_map = GX_TEXMAP0;
+    uint8_t tex_coord = GX_TEXCOORD0;
+    uint8_t input_coordinates = GX_TG_TEX0;
+    uint8_t stage = GX_TEVSTAGE0;
+    GXTexObj *texture;
+    texture = ogx_shader_get_texobj(texture_unit);
+    GX_LoadTexObj(texture, tex_map);
+    GX_SetNumChans(1);
+    GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX,
+                   0, GX_DF_CLAMP, GX_AF_NONE);
+
+    // In data: c: Texture Color b: raster value, Operation: b*c
+    GX_SetTevColorIn(stage, GX_CC_ZERO, GX_CC_RASC, GX_CC_TEXC, GX_CC_CPREV);
+    GX_SetTevAlphaIn(stage, GX_CA_ZERO, GX_CA_RASA, GX_CA_TEXA, GX_CA_APREV);
+    GX_SetTevColorOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE,
+                     GX_TEVPREV);
+    GX_SetTevAlphaOp(stage, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE,
+                     GX_TEVPREV);
+    GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, input_coordinates, GX_IDENTITY);
+
+    GX_SetNumTevStages(1);
+    GX_SetTevOrder(stage, tex_coord, tex_map, GX_COLOR0A0);
+    GX_SetNumTexGens(1);
+}
+
 static bool shader_compile(GLuint shader)
 {
     uint32_t source_hash = ogx_shader_get_source_hash(shader);
@@ -82,6 +122,15 @@ static bool shader_compile(GLuint shader)
         ogx_shader_add_attributes(shader, 2,
                                   "position", GL_FLOAT_VEC3, GX_VA_POS,
                                   "normal", GL_FLOAT_VEC3, GX_VA_NRM);
+    } else if (source_hash == 0x53560768) {
+        /* cube_tex.cpp vertex shader */
+        ogx_shader_add_uniforms(shader, 2,
+            "MVP", GL_FLOAT_MAT4,
+            "myTextureSampler", GL_SAMPLER_2D);
+        ogx_shader_add_attributes(shader, 3,
+            "vertexPosition_modelspace", GL_FLOAT_VEC3, GX_VA_POS,
+            "vertexUV", GL_FLOAT_VEC2, GX_VA_TEX0,
+            "vertexColor", GL_FLOAT_VEC4, GX_VA_CLR0);
     }
 }
 
@@ -99,11 +148,18 @@ static GLenum link_program(GLuint program)
         data->light_pos_loc = glGetUniformLocation(program, "LightSourcePosition");
         ogx_shader_program_set_user_data(program, data, free);
         ogx_shader_program_set_setup_draw_cb(program, gl2gears_setup_draw);
+    } else if (vertex_shader_hash == 0x53560768) {
+        /* cube_tex.cpp vertex shader */
+        CubeTexData *data = calloc(1, sizeof(CubeTexData));
+        data->mvp_loc = glGetUniformLocation(program, "MVP");
+        data->tex_sampler_loc = glGetUniformLocation(program, "myTextureSampler");
+        ogx_shader_program_set_user_data(program, data, free);
+        ogx_shader_program_set_setup_draw_cb(program, cube_tex_setup_draw);
     }
     return GL_NO_ERROR;
 }
 
-const OgxProgramProcessor s_processor = {
+static const OgxProgramProcessor s_processor = {
     .compile_shader = shader_compile,
     .link_program = link_program,
 };

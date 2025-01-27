@@ -35,6 +35,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "textures.h"
 
+#if defined(__wii__) || defined(__gamecube__)
+#include "opengx_shaders.h"
+#endif
+
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <stdio.h>
@@ -105,6 +109,10 @@ process_event(SDL_Event *event)
 
 int main(int argc, char **argv)
 {
+#if defined(__wii__) || defined(__gamecube__)
+    setup_opengx_shaders();
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK) != 0) {
         SDL_Log("SDL init error: %s", SDL_GetError());
         return EXIT_FAILURE;
