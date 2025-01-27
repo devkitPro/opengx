@@ -103,3 +103,9 @@ void ogx_set_mvp_matrix(const GLfloat *matrix)
      * the matrices as dirty so that they'd be reconfigured when needed. */
     glparamstate.dirty.bits.dirty_matrices = 1;
 }
+
+GXTexObj *ogx_shader_get_texobj(int texture_unit)
+{
+    OgxTextureUnit *tu = &glparamstate.texture_unit[texture_unit];
+    return &texture_list[tu->glcurtex].texobj;
+}

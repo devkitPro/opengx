@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <GL/gl.h>
 #include <ogc/gu.h>
+#include <ogc/gx.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -137,6 +138,8 @@ typedef enum {
 } OgxVariableFlags;
 
 uint32_t ogx_shader_get_source_hash(GLuint shader);
+
+GXTexObj *ogx_shader_get_texobj(int texture_unit);
 
 /* These can be called from the compile_shader callback.
  * In the variable argument list you should pass a pair (name, type),
