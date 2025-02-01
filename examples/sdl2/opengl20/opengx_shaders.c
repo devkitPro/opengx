@@ -42,6 +42,8 @@ static void gl2gears_setup_draw(GLuint program, const OgxDrawData *draw_data,
     ogx_matrix_gl_to_mtx(normal_matrix, normalm);
     GX_LoadNrmMtxImm(normalm, GX_PNMTX0);
 
+    uint8_t stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+
     GXLightObj light;
     // Increase distance to simulate a directional light
     float light_pos[3] = {
@@ -62,9 +64,7 @@ static void gl2gears_setup_draw(GLuint program, const OgxDrawData *draw_data,
     GX_SetChanCtrl(GX_COLOR0A0, GX_ENABLE, GX_SRC_REG, GX_SRC_REG,
                    1, GX_DF_CLAMP, GX_AF_NONE);
 
-    GX_SetNumTevStages(1);
-    GX_SetNumTexGens(0);
-    GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+    GX_SetTevOp(stage, GX_PASSCLR);
 }
 
 typedef struct {
@@ -82,10 +82,10 @@ static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
     glGetUniformiv(program, data->tex_sampler_loc, &texture_unit);
     ogx_shader_set_mvp_gl(m);
 
-    uint8_t tex_map = GX_TEXMAP0;
-    uint8_t tex_coord = GX_TEXCOORD0;
+    uint8_t tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
+    uint8_t tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
     uint8_t input_coordinates = GX_TG_TEX0;
-    uint8_t stage = GX_TEVSTAGE0;
+    uint8_t stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
     GXTexObj *texture;
     texture = ogx_shader_get_texobj(texture_unit);
     GX_LoadTexObj(texture, tex_map);
@@ -102,9 +102,7 @@ static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
                      GX_TEVPREV);
     GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4, input_coordinates, GX_IDENTITY);
 
-    GX_SetNumTevStages(1);
     GX_SetTevOrder(stage, tex_coord, tex_map, GX_COLOR0A0);
-    GX_SetNumTexGens(1);
 }
 
 static bool shader_compile(GLuint shader)
