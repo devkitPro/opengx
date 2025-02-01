@@ -2268,6 +2268,25 @@ static void setup_fog()
     GX_SetFog(mode, start, end, near, far, color);
 }
 
+static bool setup_common_stages()
+{
+    if (glparamstate.stencil.enabled) {
+        bool should_draw = _ogx_stencil_setup_tev();
+        if (!should_draw) return false;
+    }
+
+    if (glparamstate.clip_plane_mask != 0) {
+        _ogx_clip_setup_tev();
+    }
+
+    /* Stages and texture coordinate slots must be enabled sequentially, so we
+     * know that the number of used resources is given by
+     * OgxGpuResources::{tevstage,texcoord}_first. */
+    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
+    return true;
+}
+
 bool _ogx_setup_render_stages()
 {
     if (!glparamstate.dirty.bits.dirty_tev) return true;
@@ -2421,22 +2440,9 @@ bool _ogx_setup_render_stages()
         }
     }
 
-    if (glparamstate.stencil.enabled) {
-        bool should_draw = _ogx_stencil_setup_tev();
-        if (!should_draw) return false;
-    }
-
-    if (glparamstate.clip_plane_mask != 0) {
-        _ogx_clip_setup_tev();
-    }
-
-    /* Stages and texture coordinate slots must be enabled sequentially, so we
-     * know that the number of used resources is given by
-     * OgxGpuResources::{tevstage,texcoord}_first. */
-    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
-    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
+    bool should_draw = setup_common_stages();
     glparamstate.dirty.bits.dirty_tev = false;
-    return true;
+    return should_draw;
 }
 
 static inline void apply_state_fixed_pipeline()
@@ -2629,6 +2635,7 @@ static bool setup_draw(const OgxDrawData *draw_data)
         if (!should_draw) return false;
     } else {
         _ogx_shader_setup_draw(draw_data);
+        if (!setup_common_stages()) return false;
     }
     _ogx_apply_state();
     return true;
