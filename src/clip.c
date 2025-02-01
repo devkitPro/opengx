@@ -100,7 +100,8 @@ static bool setup_tev(u8 tex_map, int plane_index0, int plane_index1)
          * than zero ensures that we end up in the right quadrant)  */
         set_gx_mtx_row(1, planes, 0.0f, 0.0f, 0.0f, 1.0f);
     }
-    guMtxConcat(planes, glparamstate.modelview_matrix, m);
+
+    guMtxConcat(planes, *glparamstate.mv_ptr, m);
     /* Our texture has coordinates [0,1]x[0,1] and is made of four texels. The
      * centre of our texture is (0.5, 0.5), therefore we need to map the zero
      * point to that. We do that by translating the texture coordinates by 0.5.
