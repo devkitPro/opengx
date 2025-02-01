@@ -36,7 +36,7 @@ static void gl2gears_setup_draw(GLuint program, const OgxDrawData *draw_data,
     glGetUniformfv(program, data->mat_color_loc, colorf);
     float light_dir[4];
     glGetUniformfv(program, data->light_pos_loc, light_dir);
-    ogx_set_mvp_matrix(m);
+    ogx_shader_set_mvp_gl(m);
 
     Mtx normalm;
     ogx_matrix_gl_to_mtx(normal_matrix, normalm);
@@ -80,7 +80,7 @@ static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
     glGetUniformfv(program, data->mvp_loc, m);
     GLint texture_unit;
     glGetUniformiv(program, data->tex_sampler_loc, &texture_unit);
-    ogx_set_mvp_matrix(m);
+    ogx_shader_set_mvp_gl(m);
 
     uint8_t tex_map = GX_TEXMAP0;
     uint8_t tex_coord = GX_TEXCOORD0;

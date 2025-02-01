@@ -176,19 +176,15 @@ void ogx_shader_setup_attribute_array(int index, uint8_t gx_attr,
                                       const OgxDrawData *draw_data);
 void *ogx_shader_get_data(GLuint shader);
 
-void ogx_set_projection_gx(const Mtx44 matrix);
-static inline void ogx_set_projection_gl(const GLfloat *matrix)
+void ogx_shader_set_projection_gx(const Mtx44 matrix);
+static inline void ogx_shader_set_projection_gl(const GLfloat *matrix)
 {
     Mtx44 m;
     for (int i = 0; i < 16; i++) {
         m[i % 4][i / 4] = matrix[i];
     }
-    ogx_set_projection_gx(m);
+    ogx_shader_set_projection_gx(m);
 }
-/* Many OpenGL 2.0+ apps pass a uniform with the model-view-projection matrix
- * to the vertex shader. This function decomposes it into MV and projection
- * matrices, and uploads them separately to GX. */
-void ogx_set_mvp_matrix(const GLfloat *matrix);
 
 static inline void ogx_matrix_gl_to_mtx(const GLfloat *matrix, Mtx m)
 {
@@ -198,6 +194,19 @@ static inline void ogx_matrix_gl_to_mtx(const GLfloat *matrix, Mtx m)
         m[row][col] = matrix[col * 4 + row];
     }
 }
+
+void ogx_shader_set_modelview_gx(const Mtx matrix);
+static inline void ogx_shader_set_modelview_gl(const GLfloat *matrix)
+{
+    Mtx m;
+    ogx_matrix_gl_to_mtx(matrix, m);
+    ogx_shader_set_modelview_gx(m);
+}
+
+/* Many OpenGL 2.0+ apps pass a uniform with the model-view-projection matrix
+ * to the vertex shader. This function decomposes it into MV and projection
+ * matrices, and uploads them separately to GX. */
+void ogx_shader_set_mvp_gl(const GLfloat *matrix);
 
 #ifdef __cplusplus
 } // extern C

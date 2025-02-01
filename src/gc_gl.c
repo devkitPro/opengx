@@ -124,7 +124,7 @@ static void get_projection_info(const Mtx44 matrix, u8 *type, float *near, float
     }
 }
 
-void ogx_set_projection_gx(const Mtx44 matrix)
+void _ogx_set_projection(const Mtx44 matrix)
 {
     /* OpenGL's projection matrix transform the scene into a clip space where
      * all the coordinates lie in the range [-1, 1]. Nintendo's GX, however,
@@ -154,7 +154,7 @@ void ogx_set_projection_gx(const Mtx44 matrix)
 
 static inline void update_projection_matrix()
 {
-    ogx_set_projection_gx(glparamstate.projection_matrix);
+    _ogx_set_projection(glparamstate.projection_matrix);
 }
 
 static inline void update_normal_matrix()

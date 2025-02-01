@@ -29,6 +29,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
+#define BUILDING_SHADER_CODE
 #include "debug.h"
 #include "opengx.h"
 #include "shader.h"
@@ -44,7 +45,18 @@ static void scale_matrix(const GLfloat *matrix, float divisor, float *out)
         out[i] = matrix[i] / divisor;
 }
 
-void ogx_set_mvp_matrix(const GLfloat *matrix)
+void ogx_shader_set_projection_gx(const Mtx44 matrix)
+{
+    _ogx_set_projection(matrix);
+}
+
+void ogx_shader_set_modelview_gx(const Mtx matrix)
+{
+    GX_LoadPosMtxImm((void*)matrix, GX_PNMTX0);
+    GX_SetCurrentMtx(GX_PNMTX0);
+}
+
+void ogx_shader_set_mvp_gl(const GLfloat *matrix)
 {
     Mtx44 proj;
     Mtx mv;
@@ -95,9 +107,8 @@ void ogx_set_mvp_matrix(const GLfloat *matrix)
             mv[row][col] = matrix[col * 4 + row];
         }
     }
-    ogx_set_projection_gx(proj);
-    GX_LoadPosMtxImm(mv, GX_PNMTX0);
-    GX_SetCurrentMtx(GX_PNMTX0);
+    ogx_shader_set_projection_gx(proj);
+    ogx_shader_set_modelview_gx(mv);
 
     /* In the unlikely case that some fixed-pipeline drawing happens, we mark
      * the matrices as dirty so that they'd be reconfigured when needed. */
