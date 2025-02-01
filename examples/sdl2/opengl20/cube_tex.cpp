@@ -48,9 +48,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <glm/gtc/matrix_transform.hpp>
 using namespace glm;
 
-static SDL_Joystick *joystick = NULL;
+static SDL_GameController *controller = NULL;
 static SDL_Window *window = NULL;
 static bool done = false;
+static bool clip_enabled = false;
 
 static const char *vertex_shader =
 "#version 120\n"
@@ -95,14 +96,31 @@ static void
 process_event(SDL_Event *event)
 {
     switch (event->type) {
-    case SDL_JOYBUTTONDOWN:
+    case SDL_CONTROLLERBUTTONDOWN:
+        switch (event->cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_START:
+        case SDL_CONTROLLER_BUTTON_BACK:
+            done = true;
+            break;
+        case SDL_CONTROLLER_BUTTON_A:
+            clip_enabled = !clip_enabled;
+            break;
+        }
+        break;
+    case SDL_KEYDOWN:
+        switch (event->key.keysym.sym) {
+        case SDLK_c:
+            clip_enabled = !clip_enabled;
+            break;
+        }
+        break;
     case SDL_QUIT:
         done = true;
         break;
 
     case SDL_JOYDEVICEADDED:
         /* Of course, we should dispose the old one, etc etc :-) */
-        joystick = SDL_JoystickOpen(event->jdevice.which);
+        controller = SDL_GameControllerOpen(event->jdevice.which);
         break;
     }
 }
@@ -113,7 +131,7 @@ int main(int argc, char **argv)
     setup_opengx_shaders();
 #endif
 
-    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL init error: %s", SDL_GetError());
         return EXIT_FAILURE;
     }
@@ -308,6 +326,15 @@ int main(int argc, char **argv)
 
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if (clip_enabled) {
+            /* Add a clipping plane that rotates around the cube */
+            GLdouble clip_plane[4] = { sin(dt), cos(dt), 0.2, 0.1 };
+            glClipPlane(GL_CLIP_PLANE0, clip_plane);
+            glEnable(GL_CLIP_PLANE0);
+        } else {
+            glDisable(GL_CLIP_PLANE0);
+        }
 
         // Use our shader
         glUseProgram(programID);
