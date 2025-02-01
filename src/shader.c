@@ -893,6 +893,14 @@ void glUseProgram(GLuint program)
     glparamstate.current_program = program;
     glparamstate.dirty.bits.dirty_attributes = 1;
 
+    if (program != 0) {
+        glparamstate.mv_ptr = &_ogx_shader_state.mv_matrix;
+        glparamstate.proj_ptr = &_ogx_shader_state.proj_matrix;
+    } else {
+        glparamstate.mv_ptr = &glparamstate.modelview_matrix;
+        glparamstate.proj_ptr = &glparamstate.projection_matrix;
+    }
+
     if (old && old->deletion_requested) {
         glDeleteProgram(PROGRAM_TO_INT(old));
     }

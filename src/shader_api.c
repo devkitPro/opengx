@@ -47,12 +47,16 @@ static void scale_matrix(const GLfloat *matrix, float divisor, float *out)
 
 void ogx_shader_set_projection_gx(const Mtx44 matrix)
 {
+    memcpy(_ogx_shader_state.proj_matrix, matrix,
+           sizeof(_ogx_shader_state.proj_matrix));
     _ogx_set_projection(matrix);
 }
 
 void ogx_shader_set_modelview_gx(const Mtx matrix)
 {
-    GX_LoadPosMtxImm((void*)matrix, GX_PNMTX0);
+    memcpy(_ogx_shader_state.mv_matrix, matrix,
+           sizeof(_ogx_shader_state.mv_matrix));
+    GX_LoadPosMtxImm(_ogx_shader_state.mv_matrix, GX_PNMTX0);
     GX_SetCurrentMtx(GX_PNMTX0);
 }
 

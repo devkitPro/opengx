@@ -149,6 +149,10 @@ typedef struct {
      * separate array so that we can use consecutive elements as matrix
      * columns. */
     Vec4f vertex_attrib_data[MAX_VERTEX_ATTRIBS];
+
+    /* Transformation matrices */
+    Mtx mv_matrix;
+    Mtx44 proj_matrix;
 } OgxShaderState;
 
 typedef struct _OgxVertexAttribState OgxVertexAttribState;

@@ -310,6 +310,8 @@ void ogx_initialize()
     glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+    glparamstate.mv_ptr = &glparamstate.modelview_matrix;
+    glparamstate.proj_ptr = &glparamstate.projection_matrix;
 
     glparamstate.scissor[0] = glparamstate.scissor[1] = 0;
     /* Scissor width and height are initialized when a window is attached */
