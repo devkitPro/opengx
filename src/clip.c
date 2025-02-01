@@ -68,9 +68,9 @@ static void load_clip_texture(u8 tex_map)
 
 static bool setup_tev(u8 tex_map, int plane_index0, int plane_index1)
 {
-    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
-    u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
-    u8 tex_mtx = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+    u8 stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+    u8 tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
+    u8 tex_mtx = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
 
     debug(OGX_LOG_CLIPPING, "%d TEV stages, %d tex_coords, %d tex_maps",
           stage, tex_coord, tex_map);
@@ -140,7 +140,7 @@ bool _ogx_clip_is_point_clipped(const guVector *p)
 void _ogx_clip_setup_tev()
 {
     debug(OGX_LOG_CLIPPING, "setting up clip TEV");
-    u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
+    u8 tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
     load_clip_texture(tex_map);
 
     int plane_index0 = -1;

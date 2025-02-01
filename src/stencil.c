@@ -285,15 +285,15 @@ static bool setup_tev_full(bool invert_logic)
         return comp_type == TEV_COMP_ALWAYS;
     }
 
-    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
-    u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
-    u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
-    u8 tex_mtx = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++;
+    u8 stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+    u8 tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
+    u8 tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
+    u8 tex_mtx = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++;
 
     debug(OGX_LOG_STENCIL, "%d TEV stages, %d tex_coords, %d tex_maps",
-          _ogx_gpu_resources->tevstage_first,
-          _ogx_gpu_resources->texcoord_first,
-          _ogx_gpu_resources->texmap_first);
+          ogx_gpu_resources->tevstage_first,
+          ogx_gpu_resources->texcoord_first,
+          ogx_gpu_resources->texmap_first);
     u8 logical_op;
     u8 ref_value = GX_CA_KONST;
     bool invert_operands = false;
@@ -450,8 +450,8 @@ static bool draw_op(uint16_t op,
     GX_SetColorUpdate(GX_TRUE);
     glparamstate.dirty.bits.dirty_color_update = 1;
 
-    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
-    u8 tevreg_index = _ogx_gpu_resources->tevreg_first++;
+    u8 stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+    u8 tevreg_index = ogx_gpu_resources->tevreg_first++;
     GX_SetTevColor(GX_TEVREG0 + tevreg_index, drawColor);
     GX_SetTevOrder(stage, GX_TEXCOORDNULL, GX_TEXMAP_DISABLE, GX_COLOR0A0);
     /* Pass the constant color */
@@ -474,8 +474,8 @@ static bool draw_op(uint16_t op,
 
     s_stencil_texture_needs_update = true;
 
-    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
-    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
+    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
 
     if (check_z) {
         /* Use the Z-buffer, but don't modify it! */

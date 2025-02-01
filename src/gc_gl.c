@@ -2274,7 +2274,7 @@ bool _ogx_setup_render_stages()
 
     u8 raster_output, raster_reg_index;
     if (glparamstate.texture_enabled) {
-        raster_reg_index = _ogx_gpu_resources->tevreg_first++;
+        raster_reg_index = ogx_gpu_resources->tevreg_first++;
         raster_output = GX_TEVREG0 + raster_reg_index;
     } else {
         raster_output = GX_TEVPREV;
@@ -2286,7 +2286,7 @@ bool _ogx_setup_render_stages()
         GXColor color_black = { 0, 0, 0, 255 };
         GXColor color_gamb = gxcol_new_fv(glparamstate.lighting.globalambient);
 
-        _ogx_gpu_resources->tevstage_first += 2;
+        ogx_gpu_resources->tevstage_first += 2;
         GX_SetNumChans(2);
 
         unsigned char vert_color_src = GX_SRC_VTX;
@@ -2357,7 +2357,7 @@ bool _ogx_setup_render_stages()
 
         // STAGE 0: ambient*vert_color -> cprev
         // In data: d: Raster Color, a: emission color
-        u8 emission_reg = _ogx_gpu_resources->tevreg_first++;
+        u8 emission_reg = ogx_gpu_resources->tevreg_first++;
         GX_SetTevColor(GX_TEVREG0 + emission_reg, ecol);
         /* Multiply by two because there are alpha registers in between */
         GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_C0 + emission_reg * 2,
@@ -2409,7 +2409,7 @@ bool _ogx_setup_render_stages()
             _ogx_setup_texture_stages(raster_reg_index, GX_COLOR0A0);
         } else {
             // Use one stage only
-            _ogx_gpu_resources->tevstage_first += 1;
+            ogx_gpu_resources->tevstage_first += 1;
             // In data: d: Raster Color
             GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
             GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
@@ -2433,8 +2433,8 @@ bool _ogx_setup_render_stages()
     /* Stages and texture coordinate slots must be enabled sequentially, so we
      * know that the number of used resources is given by
      * OgxGpuResources::{tevstage,texcoord}_first. */
-    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
-    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
+    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
     glparamstate.dirty.bits.dirty_tev = false;
     return true;
 }

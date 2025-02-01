@@ -105,6 +105,46 @@ void ogx_stencil_create(OgxStencilFlags flags);
 
 /* Support for GLSL emulation */
 
+typedef struct {
+    /* *_first: number of the first available resource
+     * *_end: number of the first *not* available resource
+     *
+     * The number of available resources is X_end - X_first. Each member
+     * specifies the number starting from zero, so that in order to get the ID
+     * of the desired resource, you need to add the base ID of the resource:
+     * for example, to get the actual stage number, you'd have to do
+     *
+     *     stage = number + GX_TEVSTAGE0
+     *
+     * and, for matrix types,
+     *
+     *     texmtx = number * 3 + GX_TEXMTX0
+     *
+     * Fields are named according to libogc's constants, to minimize confusion.
+     */
+    uint8_t tevstage_first;
+    uint8_t tevstage_end;
+    uint8_t kcolor_first;
+    uint8_t kcolor_end;
+    uint8_t tevreg_first;
+    uint8_t tevreg_end;
+    uint8_t texcoord_first;
+    uint8_t texcoord_end;
+    uint8_t pnmtx_first;
+    uint8_t pnmtx_end;
+    uint8_t dttmtx_first;
+    uint8_t dttmtx_end;
+    uint8_t texmtx_first;
+    uint8_t texmtx_end;
+    uint8_t texmap_first;
+    uint8_t texmap_end;
+    /* We could add the VTXFMT here too, if we decided to reserve them for
+     * specific goals; for the time being, we only use GX_VTXFMT0 and set it up
+     * from scratch every time. */
+} OgxGpuResources;
+
+extern OgxGpuResources *ogx_gpu_resources;
+
 typedef struct _OgxDrawMode {
     uint8_t mode;
     bool loop;
