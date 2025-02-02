@@ -154,7 +154,7 @@ void _ogx_set_projection(const Mtx44 matrix)
 
 static inline void update_projection_matrix()
 {
-    _ogx_set_projection(glparamstate.projection_matrix);
+    _ogx_set_projection(*glparamstate.proj_ptr);
 }
 
 static inline void update_normal_matrix()

@@ -361,12 +361,12 @@ static bool setup_tev_full(bool invert_logic)
      * Here we just take the movel view matrix and apply the scale on the X and
      * Y coordinates from the projection matrix. */
     Mtx m;
-    guMtxScaleApply(glparamstate.modelview_matrix, m,
-                    glparamstate.projection_matrix[0][0],
-                    glparamstate.projection_matrix[1][1],
+    guMtxScaleApply(*glparamstate.mv_ptr, m,
+                    (*glparamstate.proj_ptr)[0][0],
+                    (*glparamstate.proj_ptr)[1][1],
                     1.0);
     u8 matrix_type;
-    if (glparamstate.projection_matrix[3][3] != 0) {
+    if ((*glparamstate.proj_ptr)[3][3] != 0) {
         /* Othographic projection: this can be handled by a 2x4 matrix. We
          * apply a scale & translation matrix to transform the [-1,1]x[-1,1]
          * clip space coordinates to the [0,1]x[0,1] range which we need for
