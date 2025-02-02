@@ -206,8 +206,11 @@ void ogx_shader_add_attributes(GLuint shader, int count, ...);
 typedef void (*OgxCleanupCb)(void *data);
 typedef void (*OgxSetupDrawCb)(GLuint program, const OgxDrawData *draw_data,
                                void *user_data);
+typedef void (*OgxSetupMatricesCb)(GLuint program, void *user_data);
 void ogx_shader_program_set_user_data(GLuint program,
                                       void *data, OgxCleanupCb cleanup);
+void ogx_shader_program_set_setup_matrices_cb(GLuint program,
+                                              OgxSetupMatricesCb callback);
 void ogx_shader_program_set_setup_draw_cb(GLuint program,
                                           OgxSetupDrawCb callback);
 

@@ -1011,10 +1011,26 @@ void ogx_shader_program_set_setup_draw_cb(GLuint program,
     p->setup_draw_cb = setup_draw;
 }
 
+void ogx_shader_program_set_setup_matrices_cb(
+    GLuint program, OgxSetupMatricesCb setup_matrices)
+{
+    OgxProgram *p = PROGRAM_FROM_INT(program);
+    p->setup_matrices_cb = setup_matrices;
+}
+
 void *ogx_shader_get_data(GLuint shader)
 {
     OgxShader *s = SHADER_FROM_INT(shader);
     return s->user_data;
+}
+
+void _ogx_shader_setup_matrices()
+{
+    OgxProgram *p = PROGRAM_FROM_INT(glparamstate.current_program);
+
+    if (p->setup_matrices_cb) {
+        p->setup_matrices_cb(PROGRAM_TO_INT(p), p->user_data);
+    }
 }
 
 void _ogx_shader_setup_draw(const OgxDrawData *draw_data)

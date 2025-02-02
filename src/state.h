@@ -353,6 +353,7 @@ extern glparams_ _ogx_state;
 #define texture_list _ogx_state.textures
 
 void _ogx_apply_state(void);
+void _ogx_update_matrices(void);
 
 #ifdef __cplusplus
 } // extern C

@@ -324,6 +324,7 @@ static void run_draw_geometry(struct DrawGeometry *dg)
     _ogx_gpu_resources_push();
     cs = glparamstate.cs;
     glparamstate.cs = dg->cs;
+    _ogx_update_matrices();
     _ogx_apply_state();
     _ogx_setup_render_stages();
     glparamstate.cs = cs;
