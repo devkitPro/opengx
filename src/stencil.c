@@ -540,6 +540,8 @@ void _ogx_stencil_draw(OgxStencilDrawCallback callback, void *cb_data)
                 check_stencil, invert_stencil, check_z, invert_z,
                 callback, cb_data);
     }
+
+    glparamstate.dirty.bits.dirty_tev = 1;
 }
 
 void _ogx_stencil_enabled()
