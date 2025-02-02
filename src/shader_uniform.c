@@ -144,6 +144,7 @@ static void set_uniform_matrices(GLint location, GLsizei count,
         floatcpy(&data->data.mat4[0], matrix, elements);
         src += elements;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glUniform1f(GLint location, GLfloat v0)

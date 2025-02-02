@@ -204,6 +204,15 @@ static char get_attribute_bound_location(OgxProgram *p, const char *name)
     return MAX_VERTEX_ATTRIBS; /* invalid value */
 }
 
+static void setup_matrices()
+{
+    OgxProgram *p = PROGRAM_FROM_INT(glparamstate.current_program);
+
+    if (p->setup_matrices_cb) {
+        p->setup_matrices_cb(PROGRAM_TO_INT(p), p->user_data);
+    }
+}
+
 void glAttachShader(GLuint program, GLuint shader)
 {
     OgxProgram *p = PROGRAM_FROM_INT(program);
@@ -892,13 +901,16 @@ void glUseProgram(GLuint program)
     OgxProgram *old = PROGRAM_FROM_INT(glparamstate.current_program);
     glparamstate.current_program = program;
     glparamstate.dirty.bits.dirty_attributes = 1;
+    glparamstate.dirty.bits.dirty_matrices = 1;
 
     if (program != 0) {
         glparamstate.mv_ptr = &_ogx_shader_state.mv_matrix;
         glparamstate.proj_ptr = &_ogx_shader_state.proj_matrix;
+        glparamstate.update_matrices = setup_matrices;
     } else {
         glparamstate.mv_ptr = &glparamstate.modelview_matrix;
         glparamstate.proj_ptr = &glparamstate.projection_matrix;
+        glparamstate.update_matrices = _ogx_update_matrices_fixed_pipeline;
     }
 
     if (old && old->deletion_requested) {
@@ -1022,15 +1034,6 @@ void *ogx_shader_get_data(GLuint shader)
 {
     OgxShader *s = SHADER_FROM_INT(shader);
     return s->user_data;
-}
-
-void _ogx_shader_setup_matrices()
-{
-    OgxProgram *p = PROGRAM_FROM_INT(glparamstate.current_program);
-
-    if (p->setup_matrices_cb) {
-        p->setup_matrices_cb(PROGRAM_TO_INT(p), p->user_data);
-    }
 }
 
 void _ogx_shader_setup_draw(const OgxDrawData *draw_data)

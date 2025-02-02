@@ -341,6 +341,7 @@ typedef struct glparams_
     } current_call_list;
 
     GLuint current_program;
+    void (*update_matrices)(void);
 
     bool compat_profile;
     GLenum error;
@@ -354,6 +355,7 @@ extern glparams_ _ogx_state;
 
 void _ogx_apply_state(void);
 void _ogx_update_matrices(void);
+void _ogx_update_matrices_fixed_pipeline(void);
 
 #ifdef __cplusplus
 } // extern C

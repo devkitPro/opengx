@@ -167,7 +167,6 @@ extern OgxFunctions _ogx_shader_functions;
 extern OgxShaderState _ogx_shader_state;
 
 void _ogx_shader_initialize();
-void _ogx_shader_setup_matrices();
 void _ogx_shader_setup_draw(const OgxDrawData *draw_data);
 void _ogx_shader_update_vertex_array_readers(OgxDrawMode mode);
 
@@ -189,10 +188,6 @@ void __attribute__((weak)) _ogx_shader_initialize() {}
 void __attribute__((weak)) _ogx_shader_setup_draw(const OgxDrawData *)
 {
     warning("Rendering via shaders is not enabled");
-}
-
-void __attribute__((weak)) _ogx_shader_setup_matrices()
-{
 }
 
 void __attribute__((weak)) _ogx_shader_update_vertex_array_readers(OgxDrawMode)

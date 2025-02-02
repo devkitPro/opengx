@@ -312,6 +312,7 @@ void ogx_initialize()
     glLoadIdentity();
     glparamstate.mv_ptr = &glparamstate.modelview_matrix;
     glparamstate.proj_ptr = &glparamstate.projection_matrix;
+    glparamstate.update_matrices = _ogx_update_matrices_fixed_pipeline;
 
     glparamstate.scissor[0] = glparamstate.scissor[1] = 0;
     /* Scissor width and height are initialized when a window is attached */
@@ -1094,7 +1095,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.projection_matrix, glparamstate.projection_stack[glparamstate.cur_proj_mat], sizeof(Mtx44));
         glparamstate.cur_proj_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         if (glparamstate.cur_modv_mat < 0) {
@@ -1103,7 +1103,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1119,6 +1118,7 @@ void glPopMatrix(void)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glPushMatrix(void)
@@ -1163,11 +1163,9 @@ void glLoadMatrixf(const GLfloat *m)
     switch (glparamstate.matrixmode) {
     case 0:
         gl_matrix_to_gx44(m, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         gl_matrix_to_gx(m, glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1179,6 +1177,7 @@ void glLoadMatrixf(const GLfloat *m)
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glMultMatrixd(const GLdouble *m)
@@ -1202,11 +1201,9 @@ void glMultMatrixf(const GLfloat *m)
         gl_matrix_to_gx44(m, mtx44);
         guMtx44Concat(glparamstate.projection_matrix, mtx44,
                       glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1215,6 +1212,7 @@ void glMultMatrixf(const GLfloat *m)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         Mtx mtx;
         gl_matrix_to_gx(m, mtx);
@@ -1229,11 +1227,9 @@ void glLoadIdentity()
     switch (glparamstate.matrixmode) {
     case 0:
         guMtx44Identity(glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         guMtxIdentity(glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1245,6 +1241,7 @@ void glLoadIdentity()
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glScalef(GLfloat x, GLfloat y, GLfloat z)
@@ -1258,11 +1255,9 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyScale(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1272,6 +1267,7 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyScale(*target, *target, x, y, z);
     }
@@ -1298,11 +1294,9 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyTrans(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1312,6 +1306,7 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyTrans(*target, *target, x, y, z);
     }
@@ -1332,11 +1327,9 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         rot[3][0] = rot[3][1] = rot[3][2] = 0.0f;
         rot[3][3] = 1.0f;
         guMtx44Concat(glparamstate.projection_matrix, rot, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1346,6 +1339,7 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxConcat(*target, rot, *target);
     }
@@ -2448,18 +2442,11 @@ bool _ogx_setup_render_stages()
     return should_draw;
 }
 
-static inline void update_matrices_fixed_pipeline()
+void _ogx_update_matrices_fixed_pipeline()
 {
-    // Matrix stuff
-    if (glparamstate.dirty.bits.dirty_matrices) {
-        update_modelview_matrix();
-        update_projection_matrix();
-    }
-    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
-        update_normal_matrix();
-    }
-
-    glparamstate.dirty.bits.dirty_matrices = 0;
+    update_modelview_matrix();
+    update_projection_matrix();
+    update_normal_matrix();
 }
 
 void _ogx_apply_state()
@@ -2642,10 +2629,9 @@ static bool setup_draw(const OgxDrawData *draw_data)
 
 void _ogx_update_matrices()
 {
-    if (!glparamstate.current_program) {
-        update_matrices_fixed_pipeline();
-    } else {
-        _ogx_shader_setup_matrices();
+    if (glparamstate.dirty.bits.dirty_matrices) {
+        glparamstate.update_matrices();
+        glparamstate.dirty.bits.dirty_matrices = 0;
     }
 }
 
