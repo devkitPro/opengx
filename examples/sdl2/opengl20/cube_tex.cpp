@@ -52,6 +52,7 @@ static SDL_GameController *controller = NULL;
 static SDL_Window *window = NULL;
 static bool done = false;
 static bool clip_enabled = false;
+static bool stencil_enabled = false;
 
 static const char *vertex_shader =
 "#version 120\n"
@@ -105,12 +106,18 @@ process_event(SDL_Event *event)
         case SDL_CONTROLLER_BUTTON_A:
             clip_enabled = !clip_enabled;
             break;
+        case SDL_CONTROLLER_BUTTON_B:
+            stencil_enabled = !stencil_enabled;
+            break;
         }
         break;
     case SDL_KEYDOWN:
         switch (event->key.keysym.sym) {
         case SDLK_c:
             clip_enabled = !clip_enabled;
+            break;
+        case SDLK_s:
+            stencil_enabled = !stencil_enabled;
             break;
         }
         break;
@@ -136,6 +143,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
     window = SDL_CreateWindow("Cube",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
@@ -157,6 +165,8 @@ int main(int argc, char **argv)
 
     // Dark blue background
     glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
+    glClearStencil(0);
+    glStencilMask(1);
 
     // Enable depth test
     glEnable(GL_DEPTH_TEST);
@@ -325,7 +335,7 @@ int main(int argc, char **argv)
         float dt = now - t;
 
         // Clear the screen
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         if (clip_enabled) {
             /* Add a clipping plane that rotates around the cube */
@@ -338,10 +348,6 @@ int main(int argc, char **argv)
 
         // Use our shader
         glUseProgram(programID);
-
-        // Send our transformation to the currently bound shader,
-        // in the "MVP" uniform
-        glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
 
         // Bind our texture in Texture Unit 0
         glActiveTexture(GL_TEXTURE0);
@@ -380,6 +386,33 @@ int main(int argc, char **argv)
                          0.5 + cosf(dt) / 2,
                          0.5 + sinf(dt + M_PI) / 2,
                          1.0);
+
+        if (stencil_enabled) {
+            /* Create the stencil buffer */
+            glEnable(GL_STENCIL_TEST);
+            glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+            glStencilFunc(GL_ALWAYS, 1, 1);
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glDepthMask(GL_FALSE);
+            /* Draw our cube with a different model matrix, so that it won't
+             * completely match the cube drawn below. */
+            glm::mat4 stencilModel = glm::scale(Model, glm::vec3(0.5 + sinf(dt) / 2,
+                                                                 0.5 + cosf(dt) / 2,
+                                                                 1.0));
+            glm::mat4 stencilMVP = Projection * View * stencilModel;
+            glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &stencilMVP[0][0]);
+            glDrawArrays(GL_TRIANGLES, 0, 12*3);
+            glStencilFunc(GL_EQUAL, 1, 1);  /* draw if ==1 */
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            glDepthMask(GL_TRUE);
+        } else {
+            glDisable(GL_STENCIL_TEST);
+        }
+
+        // Send our transformation to the currently bound shader,
+        // in the "MVP" uniform
+        glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
 
         // Draw the triangles !
         glDrawArrays(GL_TRIANGLES, 0, 12*3); // 12*3 indices starting at 0 -> 12 triangles
