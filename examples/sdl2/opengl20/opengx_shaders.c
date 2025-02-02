@@ -72,15 +72,20 @@ typedef struct {
     GLint tex_sampler_loc;
 } CubeTexData;
 
-static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
-                                void *user_data)
+static void cube_tex_setup_matrices(GLuint program, void *user_data)
 {
     CubeTexData *data = user_data;
     float m[16];
     glGetUniformfv(program, data->mvp_loc, m);
+    ogx_shader_set_mvp_gl(m);
+}
+
+static void cube_tex_setup_draw(GLuint program, const OgxDrawData *draw_data,
+                                void *user_data)
+{
+    CubeTexData *data = user_data;
     GLint texture_unit;
     glGetUniformiv(program, data->tex_sampler_loc, &texture_unit);
-    ogx_shader_set_mvp_gl(m);
 
     uint8_t tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
     uint8_t tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
@@ -152,6 +157,7 @@ static GLenum link_program(GLuint program)
         data->mvp_loc = glGetUniformLocation(program, "MVP");
         data->tex_sampler_loc = glGetUniformLocation(program, "myTextureSampler");
         ogx_shader_program_set_user_data(program, data, free);
+        ogx_shader_program_set_setup_matrices_cb(program, cube_tex_setup_matrices);
         ogx_shader_program_set_setup_draw_cb(program, cube_tex_setup_draw);
     }
     return GL_NO_ERROR;
