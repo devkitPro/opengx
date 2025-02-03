@@ -5,6 +5,7 @@
 \usepackage{graphicx}
 \usepackage{color}
 \usepackage[rgb]{xcolor}
+\usepackage{hyperref}
 \usepackage{listings}
 \lstset{language=C}
 
@@ -585,6 +586,142 @@ When leaving the selection mode we need to restore the Z buffer to its initial s
 
 The hit information recorded during selection mode should also contain the minimum and maximum values of the Z buffer at the moment that a hit was recorded. This is a relatively expensive operation (there's no shortcut around examining all Z pixels one by one) which OpenGX does not currently perform: not only we haven't found an application using this information, but both the AMD and Mesa drivers on the Linux desktop seem to not deliver it and just set both these values to 0.
 
+
+\subsection {Programmable pipeline and OpenGL 2.0+}
+
+While the TEV engine can be programmed to achieve very sophisticated graphical effects, there isn't a straightforward way to convert a program written in the GL shading language (GLSL) into a set of TEV instructions. And even if this was possible, executing a GLSL compiler at run-time would be impractical on the GameCube or Wii consoles, due to the amount of RAM and CPU required. The way that OpenGX supports OpenGL 2.0+ programs is by delegating the setup of the TEV to the application developer, in a way though that minimizes the amount of changes to the preexisting application's code.
+
+The idea is to offer a hook system where the application developer can provide a set of function callbacks which will be invoked at different stages of the pipeline, which will take care of setting up the TEV and transformation matrices as needed. Of course, it will not always be possible to get a 1:1 match to what the original GLSL program would output, but given the power of the TEV it should be possible to simulate most effects. To support the case where an application uses several shader programs of the same type, a 32-bit hash\footnote{The hash is currently computed via the \href{https://github.com/aappleby/smhasher/wiki/MurmurHash3}{MurmurHash3} algorithm, which is rather good at avoiding collisions.} of the shader program code is computed when \fname{glLinkProgram} is called and can be used to invoke different setup callbacks depending on the pipeline program being executed.
+
+The OpenGX API exposed to application developers is still subject to change, so we won't be documenting it in detail here (the programs in the \lstinline{examples/} directory can serve as an up-to-date reference), but the general flow is as follows: the hooks can be installed right in the application's \fname{main} function, like this:
+
+\begin{lstlisting}
+#if defined(__wii__) || defined(__gamecube__)
+#include "opengx_shaders.h"
+#endif
+
+int main(int argc, char *argv[])
+{
+#if defined(__wii__) || defined(__gamecube__)
+    setup_opengx_shaders();
+#endif
+    ...rest of the main() code...
+}
+\end{lstlisting}
+
+where it's intended that \fname{setup\_opengx\_shaders} if a function defined by the application developer in an extra file \lstinline{opengx_shaders.c} which the build system would link only for the GameCube/Wii targets, and it would be declared in \lstinline{opengx_shaders.h}. Note the both the names of the function and of the files can be changed according to one's own taste, and it's not even needed that the setup happens in a separate file --- it's just a suggestion for minimizing the changes to the application's code. The setup function must then install the callback hooks:
+
+\begin{lstlisting}
+static bool compile_shader(GLuint shader)
+{
+    /* Declare the uniforms and attributes used by this shader program */
+    ...
+}
+
+static GLenum link_program(GLuint program)
+{
+    /* Install further callbacks for setting up the transformation
+     * matrices and the TEV, depending on the program. */
+    ...
+}
+
+static const OgxProgramProcessor s_processor = {
+    .compile_shader = compile_shader,
+    .link_program = link_program,
+};
+
+void setup_opengx_shaders()
+{
+    ogx_shader_register_program_processor(&s_processor);
+}
+\end{lstlisting}
+
+The callback code should not call any OpenGL functions, as this might interfere with OpenGX, but it can call OpenGL getter methods, typically to inspect the shader programs and to retrieve the location and the value of the uniforms. OpenGL vertex attributes generally don't need any special handling, besides declaring which GX vertex attribute they map to; this is best done in the \fname{compile\_shader} callback, as shown below: OpenGX then passes all enabled vertex attributes to the GX pipe.
+
+\begin{lstlisting}
+static bool compile_shader(GLuint shader)
+{
+    /* We must inform OpenGX of which uniforms are used in this shader
+     * program, with their type. */
+    ogx_shader_add_uniforms(shader, 4,
+        "ModelViewProjectionMatrix", GL_FLOAT_MAT4,
+        "NormalMatrix", GL_FLOAT_MAT4,
+        "LightSourcePosition", GL_FLOAT_VEC4,
+        "MaterialColor", GL_FLOAT_VEC4);
+
+    /* For the attributes, we must also specify the corresponding GX_VA_*
+     * attribute that will be mapped to them. */
+    ogx_shader_add_attributes(shader, 2,
+                              "position", GL_FLOAT_VEC3, GX_VA_POS,
+                              "normal", GL_FLOAT_VEC3, GX_VA_NRM);
+}
+\end{lstlisting}
+
+The main goal of the \fname{link\_program} callback, instead, is that of installing the callbacks that will be invoked every time that the program is executed; the reason why these callbacks are not specified in the same \lstinline{OgxProgramProcessor} structure is that these callbacks are specific to the shader program, so one might install a different set of callbacks for each different pipeline program.
+
+\begin{lstlisting}
+static void setup_draw(GLuint program, const OgxDrawData *draw_data,
+                       void *user_data)
+{
+    ShaderData *data = user_data;
+    /* Retrieve the uniform values... */
+    float colorf[4];
+    glGetUniformfv(program, data->mat_color_loc, colorf);
+    ...setup the TEV stage here...
+}
+
+static void setup_matrices(GLuint program, void *user_data)
+{
+    ShaderData *data = user_data;
+    /* Retrieve and setup the transformation matrices... */
+    float m[16];
+    glGetUniformfv(program, data->mvp_loc, m);
+    ogx_shader_set_mvp_gl(m);
+    ...retrieve and setup the normal matrix...
+}
+
+static GLenum link_program(GLuint program)
+{
+    /* Not strictly necessary, but it's a good practice to cache the
+     * location of the uniforms that we'll need to use in the callbacks.
+     * Note that these uniforms must have been declared by the 
+     * compile_shader() callback earlier. */
+    ShaderData *data = malloc(sizeof(ShaderData));
+    data->mvp_loc =
+        glGetUniformLocation(program, "ModelViewProjectionMatrix");
+    data->normal_matrix_loc =
+        glGetUniformLocation(program, "NormalMatrix");
+    data->material_color_loc =
+        glGetUniformLocation(program, "MaterialColor");
+    data->light_pos_loc =
+        glGetUniformLocation(program, "LightSourcePosition");
+    ogx_shader_program_set_user_data(program, data, free);
+
+    /* Install the program-specific callbacks */
+    ogx_shader_program_set_setup_matrices_cb(program, setup_matrices);
+    ogx_shader_program_set_setup_draw_cb(program, setup_draw);
+}
+\end{lstlisting}
+
+More callbacks types might be added later to support different shader types or to give the application developer more control over the pipeline.
+
+\subsubsection{Writing a fragment shader for OpenGX}
+
+The \fname{setup\_draw} function mentioned in the last snippet is responsible for setting up all the needed TEV stages for drawing the geometry. OpenGX provides a handful of convenience functions to convert some OpenGL types to GX ones (for example, for converting an array of 4 floats into a \lstinline{GXColor}), but the actual instructions for the GPU must be written by the application developer using \lstinline{libogc}'s APIs.
+
+It's important to mention that the developer should not hardcode the stage number or other GPU resource IDs such as texture map IDs and texture coordinate IDs, but should instead allocate the IDs by incrementing the corresponding fields from the \fname{ogx\_gpu\_resources} structure which is made available as a global variable:
+
+\begin{lstlisting}
+/* Somewhere in setup_draw(), we "allocate" the IDs: */
+uint8_t stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+uint8_t tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
+uint8_t tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
+
+/* Then we use them */
+GX_SetTevOrder(stage, tex_coord, tex_map, GX_COLOR0A0);
+\end{lstlisting}
+
+By looking at the value of the \lstinline{tevstage_first} field OpenGX will know how many stages have been allocated by the shader, and will call \fname{GX\_SetNumTevStages} with the correct number of parameters (same goes for \fname{GX\_SetNumTexGens}); it's advised that application developers don't invoke these functions, because OpenGX might add additional stages if clipping or stenciling is enabled. Note also that there is no need to deallocate the IDs previously allocate (that is, no decrement operation must be performed on the \lstinline{ogx_gpu_resources} members), because OpenGX will take care of resetting it when needed.
 
 \pagebreak[4]
 
