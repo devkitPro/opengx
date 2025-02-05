@@ -142,6 +142,9 @@ static void texture_get_info(const GXTexObj *obj, TextureInfo *info)
                     &info->mipmap);
     if (info->texels) {
         info->texels = MEM_PHYSICAL_TO_K0(info->texels);
+    } else {
+        /* Ensure size is 0 if there's no texture  */
+        info->width = info->height = 0;
     }
 
     float minlevel, maxlevel;
