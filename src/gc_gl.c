@@ -1015,6 +1015,7 @@ void glEnd()
 
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 {
+   if (width > 640) width = 640;
     glparamstate.viewport[0] = x;
     glparamstate.viewport[1] = y;
     glparamstate.viewport[2] = width;
@@ -1031,6 +1032,7 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height)
 {
+    if (width > 640) width = 640;
     glparamstate.scissor[0] = x;
     glparamstate.scissor[1] = y;
     glparamstate.scissor[2] = width;
