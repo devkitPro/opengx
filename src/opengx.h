@@ -33,6 +33,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #define OPENGX_H
 
 #include <GL/gl.h>
+#include <ogc/gu.h>
+#include <ogc/gx.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -99,6 +102,154 @@ typedef enum {
 } OgxStencilFlags;
 
 void ogx_stencil_create(OgxStencilFlags flags);
+
+/* Support for GLSL emulation */
+
+typedef struct {
+    /* *_first: number of the first available resource
+     * *_end: number of the first *not* available resource
+     *
+     * The number of available resources is X_end - X_first. Each member
+     * specifies the number starting from zero, so that in order to get the ID
+     * of the desired resource, you need to add the base ID of the resource:
+     * for example, to get the actual stage number, you'd have to do
+     *
+     *     stage = number + GX_TEVSTAGE0
+     *
+     * and, for matrix types,
+     *
+     *     texmtx = number * 3 + GX_TEXMTX0
+     *
+     * Fields are named according to libogc's constants, to minimize confusion.
+     */
+    uint8_t tevstage_first;
+    uint8_t tevstage_end;
+    uint8_t kcolor_first;
+    uint8_t kcolor_end;
+    uint8_t tevreg_first;
+    uint8_t tevreg_end;
+    uint8_t texcoord_first;
+    uint8_t texcoord_end;
+    uint8_t pnmtx_first;
+    uint8_t pnmtx_end;
+    uint8_t dttmtx_first;
+    uint8_t dttmtx_end;
+    uint8_t texmtx_first;
+    uint8_t texmtx_end;
+    uint8_t texmap_first;
+    uint8_t texmap_end;
+    /* We could add the VTXFMT here too, if we decided to reserve them for
+     * specific goals; for the time being, we only use GX_VTXFMT0 and set it up
+     * from scratch every time. */
+} OgxGpuResources;
+
+extern OgxGpuResources *ogx_gpu_resources;
+
+typedef struct _OgxDrawMode {
+    uint8_t mode;
+    bool loop;
+} OgxDrawMode;
+
+typedef struct _OgxDrawData {
+    OgxDrawMode gxmode;
+    GLsizei count;
+
+    /* for drawing arrays: */
+    GLint first;
+
+    /* for drawing elements: */
+    GLenum type;
+    const GLvoid *indices;
+} OgxDrawData;
+
+typedef struct {
+    bool (*compile_shader)(GLuint shader);
+    void (*shader_source)(GLuint shader, GLsizei count,
+                          const GLchar *const*string, const GLint *length);
+    GLenum (*link_program)(GLuint program);
+} OgxProgramProcessor;
+void ogx_shader_register_program_processor(const OgxProgramProcessor *processor);
+
+typedef enum {
+    OGX_VARIABLE_ALLOCATE = 1 << 16,
+    OGX_VARIABLE_ARRAY = 1 << 17, /* TODO: read an additional argument
+                                     specifying the size */
+    OGX_VARIABLE_VERTEX_PTR = 1 << 18,
+} OgxVariableFlags;
+
+uint32_t ogx_shader_get_source_hash(GLuint shader);
+
+GXTexObj *ogx_shader_get_texobj(int texture_unit);
+
+/* These can be called from the compile_shader callback.
+ * In the variable argument list you should pass a pair (name, type),
+ * for example:
+ *
+ * ogx_shader_add_uniforms(shader_id, 2,
+ *                         "MVP", GL_FLOAT_MAT4,
+ *                         "vPos", GL_FLOAT_VEC3);
+ *
+ * OpenGX will not reallocate the names, the client must ensure that the memory
+ * won't get deallocated.
+ * */
+void ogx_shader_add_uniforms(GLuint shader, int count, ...);
+/* Similar to ogx_shader_add_uniforms, but the shader needs to specify the GX
+ * type of the destination attribute:
+ *
+ * ogx_shader_add_attributes(shader_id, 2,
+ *                           "vPos", GL_FLOAT_VEC3, GX_VA_POS,
+ *                           "color", GL_FLOAT_VEC4, GX_VA_CLR0);
+ */
+void ogx_shader_add_attributes(GLuint shader, int count, ...);
+
+/* These can be called from the link_program callback */
+typedef void (*OgxCleanupCb)(void *data);
+typedef void (*OgxSetupDrawCb)(GLuint program, const OgxDrawData *draw_data,
+                               void *user_data);
+typedef void (*OgxSetupMatricesCb)(GLuint program, void *user_data);
+void ogx_shader_program_set_user_data(GLuint program,
+                                      void *data, OgxCleanupCb cleanup);
+void ogx_shader_program_set_setup_matrices_cb(GLuint program,
+                                              OgxSetupMatricesCb callback);
+void ogx_shader_program_set_setup_draw_cb(GLuint program,
+                                          OgxSetupDrawCb callback);
+
+/* These can be called from the setup_draw callback */
+void ogx_shader_setup_attribute_array(int index, uint8_t gx_attr,
+                                      const OgxDrawData *draw_data);
+void *ogx_shader_get_data(GLuint shader);
+
+void ogx_shader_set_projection_gx(const Mtx44 matrix);
+static inline void ogx_shader_set_projection_gl(const GLfloat *matrix)
+{
+    Mtx44 m;
+    for (int i = 0; i < 16; i++) {
+        m[i % 4][i / 4] = matrix[i];
+    }
+    ogx_shader_set_projection_gx(m);
+}
+
+static inline void ogx_matrix_gl_to_mtx(const GLfloat *matrix, Mtx m)
+{
+    for (int i = 0; i < 12; i++) {
+        int row = i / 4;
+        int col = i % 4;
+        m[row][col] = matrix[col * 4 + row];
+    }
+}
+
+void ogx_shader_set_modelview_gx(const Mtx matrix);
+static inline void ogx_shader_set_modelview_gl(const GLfloat *matrix)
+{
+    Mtx m;
+    ogx_matrix_gl_to_mtx(matrix, m);
+    ogx_shader_set_modelview_gx(m);
+}
+
+/* Many OpenGL 2.0+ apps pass a uniform with the model-view-projection matrix
+ * to the vertex shader. This function decomposes it into MV and projection
+ * matrices, and uploads them separately to GX. */
+void ogx_shader_set_mvp_gl(const GLfloat *matrix);
 
 #ifdef __cplusplus
 } // extern C

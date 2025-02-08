@@ -28,6 +28,7 @@ POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
 #include "gpu_resources.h"
+#include "opengx.h"
 
 #include <assert.h>
 #include <ogc/gx.h>
@@ -39,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
  * value, if needed). */
 #define GPU_RESOURCES_STACK_SIZE 3
 
-OgxGpuResources *_ogx_gpu_resources = NULL;
+OgxGpuResources *ogx_gpu_resources = NULL;
 OgxGpuResources *s_gpu_resources = NULL;
 
 static void resources_init(OgxGpuResources *resources)
@@ -79,17 +80,17 @@ void _ogx_gpu_resources_init()
     s_gpu_resources =
         malloc(sizeof(OgxGpuResources) * GPU_RESOURCES_STACK_SIZE);
     resources_init(s_gpu_resources);
-    _ogx_gpu_resources = s_gpu_resources;
+    ogx_gpu_resources = s_gpu_resources;
 }
 
 void _ogx_gpu_resources_push()
 {
-    OgxGpuResources *old = _ogx_gpu_resources;
-    memcpy(++_ogx_gpu_resources, old, sizeof(OgxGpuResources));
+    OgxGpuResources *old = ogx_gpu_resources;
+    memcpy(++ogx_gpu_resources, old, sizeof(OgxGpuResources));
 }
 
 void _ogx_gpu_resources_pop()
 {
-    assert(_ogx_gpu_resources != s_gpu_resources);
-    _ogx_gpu_resources--;
+    assert(ogx_gpu_resources != s_gpu_resources);
+    ogx_gpu_resources--;
 }

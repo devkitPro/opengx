@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "debug.h"
 #include "efb.h"
 #include "gpu_resources.h"
+#include "opengx.h"
 #include "stencil.h"
 #include "utils.h"
 
@@ -106,6 +107,14 @@ typedef struct
             union client_state cs;
             u32 list_size;
             void *gxlist;
+            struct AttribFormat {
+                unsigned attribute : 5;
+                /* Most of these only require 2-3 bits, but let's round it */
+                unsigned inputmode : 3;
+                unsigned comptype : 4;
+                unsigned compsize : 4;
+            } formats[4 + MAX_TEXTURE_UNITS]; /* 4: pos, norm, clr1 and clr2 */
+            #define CALL_LIST_DRAW_FORMATS(fmt) (sizeof(fmt) / sizeof(fmt[0]))
         } draw_geometry;
 
         float color[4];
@@ -224,13 +233,26 @@ static void setup_draw_geometry(struct DrawGeometry *dg,
         }
     }
 
-    DrawMode gxmode = _ogx_draw_mode(dg->mode);
-    _ogx_arrays_setup_draw(gxmode.mode,
-                           dg->cs.normal_enabled,
-                           dg->cs.color_enabled ? 2 : 0,
-                           dg->cs.texcoord_enabled);
+    OgxDrawMode gxmode = _ogx_draw_mode(dg->mode);
+    OgxDrawData draw_data = {
+        gxmode,
+        dg->count,
+        /* The remaining fields are not used when drawing through lists */
+    };
+    /* Setup the same vertex attribute descriptions that were in place when the
+     * list was created */
+    GX_ClearVtxDesc();
+    for (int i = 0; i < CALL_LIST_DRAW_FORMATS(dg->formats); i++) {
+        if (dg->formats[i].inputmode == GX_NONE) continue;
+        uint8_t attribute = dg->formats[i].attribute;
+        GX_SetVtxDesc(attribute, dg->formats[i].inputmode);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, attribute,
+                         dg->formats[i].comptype, dg->formats[i].compsize, 0);
+    }
+
     if (!dg->cs.normal_enabled) {
         GX_SetVtxDesc(GX_VA_NRM, GX_INDEX8);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
         GX_SetArray(GX_VA_NRM, s_current_normal, 12);
         floatcpy(s_current_normal, glparamstate.imm_mode.current_normal, 3);
         /* Not needed on Dolphin, but it is on a Wii */
@@ -239,6 +261,8 @@ static void setup_draw_geometry(struct DrawGeometry *dg,
     if (!dg->cs.color_enabled) {
         GX_SetVtxDesc(GX_VA_CLR0, GX_INDEX8);
         GX_SetVtxDesc(GX_VA_CLR1, GX_INDEX8);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGB8, 0);
+        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR1, GX_CLR_RGBA, GX_RGB8, 0);
         s_current_color = current_color;
         GX_SetArray(GX_VA_CLR0, &s_current_color, 4);
         GX_SetArray(GX_VA_CLR1, &s_current_color, 4);
@@ -283,7 +307,7 @@ static void run_draw_geometry(struct DrawGeometry *dg)
 
     /* Update the drawing mode on the list. This required peeping into
      * GX_Begin() code. */
-    DrawMode gxmode = _ogx_draw_mode(dg->mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(dg->mode);
     u8 *fifo_ptr = dg->gxlist;
     u8 mode_opcode = gxmode.mode | (GX_VTXFMT0 & 0x7);
     if (*fifo_ptr != mode_opcode) {
@@ -300,6 +324,7 @@ static void run_draw_geometry(struct DrawGeometry *dg)
     _ogx_gpu_resources_push();
     cs = glparamstate.cs;
     glparamstate.cs = dg->cs;
+    _ogx_update_matrices();
     _ogx_apply_state();
     _ogx_setup_render_stages();
     glparamstate.cs = cs;
@@ -424,11 +449,42 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     dg->gxlist = memalign(32, MAX_GXLIST_SIZE);
     DCInvalidateRange(dg->gxlist, MAX_GXLIST_SIZE);
     dg->cs = glparamstate.cs;
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     dg->count = count + gxmode.loop;
 
-    if (dg->cs.color_enabled) {
-        _ogx_array_reader_enable_dup_color(&glparamstate.color_array, true);
+    if (glparamstate.dirty.bits.dirty_attributes)
+        _ogx_update_vertex_array_readers(gxmode);
+
+    OgxArrayReader *vertex_reader = NULL;
+    OgxArrayReader *normal_reader = NULL;
+    OgxArrayReader *color_reader = NULL;
+    OgxArrayReader *texcoord_reader[MAX_TEXTURE_UNITS] = { NULL };
+
+    /* Get the GX formats used right now */
+    OgxArrayReader *reader = NULL;
+    int format_index = 0;
+    memset(dg->formats, 0, sizeof(dg->formats));
+    while (reader = _ogx_array_reader_next(reader)) {
+        uint8_t attribute, inputmode, size, type;
+        _ogx_array_reader_get_format(reader, &attribute, &inputmode,
+                                     &type, &size);
+        dg->formats[format_index].attribute = attribute;
+        dg->formats[format_index].inputmode = inputmode;
+        dg->formats[format_index].comptype = type;
+        dg->formats[format_index].compsize = size;
+        format_index++;
+
+        if (attribute == GX_VA_POS) {
+            vertex_reader = reader;
+        } else if (attribute == GX_VA_NRM) {
+            normal_reader = reader;
+        } else if (attribute == GX_VA_CLR0) {
+            /* Ignore CLR1, since, if present, it's identical */
+            color_reader = reader;
+        } else if (attribute >= GX_VA_TEX0 &&
+                   attribute < GX_VA_TEX0 + MAX_TEXTURE_UNITS) {
+            texcoord_reader[attribute - GX_VA_TEX0] = reader;
+        }
     }
 
     GX_BeginDispList(dg->gxlist, MAX_GXLIST_SIZE);
@@ -439,25 +495,26 @@ static void queue_draw_geometry(struct DrawGeometry *dg,
     for (int i = 0; i < dg->count; i++) {
         int index = index_cb(i % count, index_data);
         float value[4];
-        _ogx_array_reader_process_element(&glparamstate.vertex_array, index);
+        _ogx_array_reader_process_element(vertex_reader, index);
 
-        if (dg->cs.normal_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.normal_array, index);
+        if (normal_reader) {
+            _ogx_array_reader_process_element(normal_reader, index);
         } else {
             GX_Normal1x8(0);
         }
 
-        if (dg->cs.color_enabled) {
-            _ogx_array_reader_process_element(&glparamstate.color_array, index);
+        /* The color data is duplicated to CLR0 and CLR1 */
+        if (color_reader) {
+            _ogx_array_reader_process_element(color_reader, index);
+            _ogx_array_reader_process_element(color_reader, index);
         } else {
-            GX_Color1x8(0); // CLR0
-            GX_Color1x8(0); // CLR1
+            GX_Color1x8(0);
+            GX_Color1x8(0);
         }
 
         for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-            if (dg->cs.texcoord_enabled & (1 << tex)) {
-                _ogx_array_reader_process_element(
-                    &glparamstate.texcoord_array[tex], index);
+            if (texcoord_reader[tex]) {
+                _ogx_array_reader_process_element(texcoord_reader[tex], index);
             }
         }
     }

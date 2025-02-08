@@ -68,9 +68,9 @@ static void load_clip_texture(u8 tex_map)
 
 static bool setup_tev(u8 tex_map, int plane_index0, int plane_index1)
 {
-    u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
-    u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
-    u8 tex_mtx = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+    u8 stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+    u8 tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
+    u8 tex_mtx = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
 
     debug(OGX_LOG_CLIPPING, "%d TEV stages, %d tex_coords, %d tex_maps",
           stage, tex_coord, tex_map);
@@ -100,7 +100,8 @@ static bool setup_tev(u8 tex_map, int plane_index0, int plane_index1)
          * than zero ensures that we end up in the right quadrant)  */
         set_gx_mtx_row(1, planes, 0.0f, 0.0f, 0.0f, 1.0f);
     }
-    guMtxConcat(planes, glparamstate.modelview_matrix, m);
+
+    guMtxConcat(planes, *glparamstate.mv_ptr, m);
     /* Our texture has coordinates [0,1]x[0,1] and is made of four texels. The
      * centre of our texture is (0.5, 0.5), therefore we need to map the zero
      * point to that. We do that by translating the texture coordinates by 0.5.
@@ -140,7 +141,7 @@ bool _ogx_clip_is_point_clipped(const guVector *p)
 void _ogx_clip_setup_tev()
 {
     debug(OGX_LOG_CLIPPING, "setting up clip TEV");
-    u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
+    u8 tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
     load_clip_texture(tex_map);
 
     int plane_index0 = -1;

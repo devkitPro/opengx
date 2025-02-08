@@ -62,12 +62,32 @@ extern "C" {
  * applications typically use much less. Also, one textured stage is used by
  * opengx when stencil is enabled. */
 #define MAX_TEXTURE_UNITS 4
+#define MAX_COLOR_ARRAYS 2 /* GX limit */
+/* The GX limit is 8, but we can have proxy arrays which generate texture
+ * coordinates from GX_VA_POS, GX_VA_NORM, etc.
+ * The choise of 10 is arbitrary here, we could set it up to 16
+ * (GX_TEVSTAGE15 - GX_TEVSTAGE0). */
+#define MAX_TEXCOORD_ARRAYS 10
+
+#define STATE_ARRAY(attribute) \
+    (glparamstate.arrays[OGX_ATTR_INDEX_##attribute])
+#define STATE_ARRAY_TEX(unit) \
+    (glparamstate.arrays[OGX_ATTR_INDEX_TEX0 + unit])
 
 typedef enum {
     OGX_HINT_NONE = 0,
     /* Enables fast (but wrong) GPU-accelerated GL_SPHERE_MAP */
     OGX_HINT_FAST_SPHERE_MAP = 1 << 0,
 } OgxHints;
+
+typedef enum {
+    OGX_ATTR_INDEX_POS = 0,
+    OGX_ATTR_INDEX_NRM,
+    OGX_ATTR_INDEX_CLR,
+    OGX_ATTR_INDEX_TEX0,
+    OGX_ATTR_INDEX_TEX_LAST = OGX_ATTR_INDEX_TEX0 + MAX_TEXTURE_UNITS - 1,
+    OGX_ATTR_INDEX_COUNT
+} OgxAttrIndex;
 
 typedef struct {
     Pos3f pos;
@@ -106,6 +126,7 @@ typedef struct {
     float texture_eye_plane_t[4];
     float texture_object_plane_s[4];
     float texture_object_plane_t[4];
+    OgxArrayReader *array_reader;
     /* There should be 4 of these (for S, T, R, Q) but GX uses a single
      * transformation for all of them */
     uint16_t gen_mode;
@@ -127,6 +148,8 @@ typedef struct glparams_
     Mtx44 projection_matrix;
     Mtx modelview_stack[MAX_MODV_STACK];
     Mtx44 projection_stack[MAX_PROJ_STACK];
+    Mtx *mv_ptr;
+    Mtx44 *proj_ptr;
     ClipPlane clip_planes[MAX_CLIP_PLANES];
     float raster_pos[4];
     float pixel_zoom_x;
@@ -181,8 +204,7 @@ typedef struct glparams_
     uint16_t hit_count;
 
     void *index_array;
-    OgxArrayReader vertex_array, normal_array, color_array;
-    OgxArrayReader texcoord_array[MAX_TEXTURE_UNITS];
+    OgxVertexAttribArray arrays[OGX_ATTR_INDEX_COUNT];
     union client_state
     {
         struct {
@@ -246,6 +268,7 @@ typedef struct glparams_
             unsigned dirty_cull : 1;
             unsigned dirty_fog : 1;
             unsigned dirty_scissor : 1;
+            unsigned dirty_attributes : 1;
         } bits;
         unsigned int all;
     } dirty;
@@ -317,6 +340,10 @@ typedef struct glparams_
         uint8_t execution_depth;
     } current_call_list;
 
+    GLuint current_program;
+    void (*update_matrices)(void);
+
+    bool compat_profile;
     GLenum error;
 } glparams_;
 
@@ -327,6 +354,8 @@ extern glparams_ _ogx_state;
 #define texture_list _ogx_state.textures
 
 void _ogx_apply_state(void);
+void _ogx_update_matrices(void);
+void _ogx_update_matrices_fixed_pipeline(void);
 
 #ifdef __cplusplus
 } // extern C

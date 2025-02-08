@@ -53,8 +53,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "gpu_resources.h"
 #include "opengx.h"
 #include "selection.h"
+#include "shader.h"
 #include "state.h"
 #include "stencil.h"
+#include "texture_gen_sw.h"
 #include "texture_unit.h"
 #include "utils.h"
 #include "vbo.h"
@@ -81,6 +83,7 @@ uint16_t _ogx_draw_sync_token = 0;
 static OgxEfbBuffer *s_efb_scene_buffer = NULL;
 static GXTexObj s_zbuffer_texture;
 static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
+static bool s_point_sprites_was_enabled = false;
 /* Force the inclusion of functions.c's TU in the build when GL functions are
  * used. In this way, if a client library (such as SDL) defines weak symbols
  * for the opengx functions it uses, a client application which actually uses
@@ -89,7 +92,7 @@ static uint8_t s_zbuffer_texels[2 * 32] ATTRIBUTE_ALIGN(32);
 extern int _ogx_functions_c;
 void *_ogx_force_proctable = &_ogx_functions_c;
 
-static void draw_arrays_general(DrawMode gxmode, int first, int count);
+typedef void (*ProcessVertex)(int index);
 
 static inline void update_modelview_matrix()
 {
@@ -99,14 +102,14 @@ static inline void update_modelview_matrix()
 
 /* Deduce the projection type (perspective vs orthogonal) and the values of the
  * near and far clipping plane from the projection matrix. */
-static void get_projection_info(u8 *type, float *near, float *far)
+static void get_projection_info(const Mtx44 matrix, u8 *type, float *near, float *far)
 {
     float A, B;
 
-    A = glparamstate.projection_matrix[2][2];
-    B = glparamstate.projection_matrix[2][3];
+    A = matrix[2][2];
+    B = matrix[2][3];
 
-    if (glparamstate.projection_matrix[3][3] == 0) {
+    if (matrix[3][3] == 0) {
         *type = GX_PERSPECTIVE;
         *near = B / (A - 1.0f);
         if (A != -1.0f) {
@@ -121,7 +124,7 @@ static void get_projection_info(u8 *type, float *near, float *far)
     }
 }
 
-static inline void update_projection_matrix()
+void _ogx_set_projection(const Mtx44 matrix)
 {
     /* OpenGL's projection matrix transform the scene into a clip space where
      * all the coordinates lie in the range [-1, 1]. Nintendo's GX, however,
@@ -133,21 +136,25 @@ static inline void update_projection_matrix()
     Mtx44 proj;
     u8 type;
     float near, far;
-    get_projection_info(&type, &near, &far);
-    memcpy(proj, glparamstate.projection_matrix, sizeof(Mtx44));
+    get_projection_info(matrix, &type, &near, &far);
+    memcpy(proj, matrix, sizeof(Mtx44));
     float tmp = 1.0f / (far - near);
     /* TODO: also use the polygon_offset_factor variable */
     float zoffset = glparamstate.polygon_offset_fill ?
         (glparamstate.polygon_offset_units * 0.00001f) : 0.0;
-    if (glparamstate.projection_matrix[3][3] != 0) {
+    if (type == GX_ORTHOGRAPHIC) {
         proj[2][2] = -tmp;
         proj[2][3] = -far * tmp + zoffset;
-        GX_LoadProjectionMtx(proj, GX_ORTHOGRAPHIC);
     } else {
         proj[2][2] = -near * tmp;
         proj[2][3] = -near * far * tmp + zoffset;
-        GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
     }
+    GX_LoadProjectionMtx(proj, type);
+}
+
+static inline void update_projection_matrix()
+{
+    _ogx_set_projection(*glparamstate.proj_ptr);
 }
 
 static inline void update_normal_matrix()
@@ -303,6 +310,9 @@ void ogx_initialize()
     glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+    glparamstate.mv_ptr = &glparamstate.modelview_matrix;
+    glparamstate.proj_ptr = &glparamstate.projection_matrix;
+    glparamstate.update_matrices = _ogx_update_matrices_fixed_pipeline;
 
     glparamstate.scissor[0] = glparamstate.scissor[1] = 0;
     /* Scissor width and height are initialized when a window is attached */
@@ -444,6 +454,8 @@ void ogx_initialize()
 
     glparamstate.active_buffer = GL_BACK;
 
+    glparamstate.current_program = 0;
+
     glparamstate.error = GL_NO_ERROR;
     glparamstate.draw_count = 0;
 
@@ -467,6 +479,8 @@ void ogx_initialize()
 
     /* Bind default texture */
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    _ogx_shader_initialize();
 }
 
 void _ogx_setup_2D_projection()
@@ -508,6 +522,7 @@ static void scene_load_from_efb()
 {
     if (!s_efb_scene_buffer) return;
     _ogx_efb_restore_texobj(&s_efb_scene_buffer->texobj);
+    _ogx_setup_3D_projection();
 }
 
 /* This function might fit best in efb.c, but since it uses symbols from other
@@ -569,6 +584,7 @@ void glEnable(GLenum cap)
         break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled |= (1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
@@ -579,6 +595,7 @@ void glEnable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled |= (1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
@@ -629,6 +646,7 @@ void glEnable(GLenum cap)
         break;
     case GL_POINT_SPRITE:
         glparamstate.point_sprites_enabled = 1;
+        glparamstate.dirty.bits.dirty_attributes = 1;
         break;
     case GL_POLYGON_OFFSET_FILL:
         glparamstate.polygon_offset_fill = 1;
@@ -650,6 +668,7 @@ void glDisable(GLenum cap)
         break;
     case GL_TEXTURE_2D:
         glparamstate.texture_enabled &= ~(1 << glparamstate.active_texture);
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_TEXTURE_GEN_S:
@@ -660,6 +679,7 @@ void glDisable(GLenum cap)
             OgxTextureUnit *tu = active_tex_unit();
             tu->gen_enabled &= ~(1 << (cap - GL_TEXTURE_GEN_S));
         }
+        glparamstate.dirty.bits.dirty_attributes = 1;
         glparamstate.dirty.bits.dirty_tev = 1;
         break;
     case GL_COLOR_MATERIAL:
@@ -988,29 +1008,37 @@ void glEnd()
     union client_state cs_backup = glparamstate.cs;
     VertexData *base = glparamstate.imm_mode.current_vertices;
     int stride = sizeof(VertexData);
+
+    OgxVertexAttribArray arrays_backup[OGX_ATTR_INDEX_COUNT];
+    memcpy(arrays_backup, glparamstate.arrays, sizeof(arrays_backup));
+
+    glVertexPointer(3, GL_FLOAT, stride, base->pos);
+
+    if (glparamstate.imm_mode.has_normal) {
+        glNormalPointer(GL_FLOAT, stride, base->norm);
+    }
+
+    if (glparamstate.imm_mode.has_color) {
+        glColorPointer(4, GL_UNSIGNED_BYTE, stride, &base->color);
+    }
+
     for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
         if (glparamstate.imm_mode.has_texcoord & (1 << i)) {
-            _ogx_array_reader_init(&glparamstate.texcoord_array[i],
-                                   GX_VA_TEX0 + i,
-                                   base->tex[i], 2, GL_FLOAT, stride);
+            glparamstate.cs.active_texture = i;
+            glTexCoordPointer(2, GL_FLOAT, stride, base->tex[i]);
         }
     }
 
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
-                           &base->color, 4, GL_UNSIGNED_BYTE, stride);
-
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM,
-                           base->norm, 3, GL_FLOAT, stride);
-
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS,
-                           base->pos, 3, GL_FLOAT, stride);
     glparamstate.cs.texcoord_enabled = glparamstate.imm_mode.has_texcoord;
     glparamstate.cs.color_enabled = glparamstate.imm_mode.has_color;
     glparamstate.cs.normal_enabled = glparamstate.imm_mode.has_normal;
     glparamstate.cs.vertex_enabled = 1;
     glDrawArrays(glparamstate.imm_mode.prim_type, 0, glparamstate.imm_mode.current_numverts);
     glparamstate.cs = cs_backup;
+    memcpy(glparamstate.arrays, arrays_backup, sizeof(arrays_backup));
     glparamstate.imm_mode.in_gl_begin = 0;
+
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
@@ -1069,7 +1097,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.projection_matrix, glparamstate.projection_stack[glparamstate.cur_proj_mat], sizeof(Mtx44));
         glparamstate.cur_proj_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         if (glparamstate.cur_modv_mat < 0) {
@@ -1078,7 +1105,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1094,6 +1120,7 @@ void glPopMatrix(void)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glPushMatrix(void)
@@ -1138,11 +1165,9 @@ void glLoadMatrixf(const GLfloat *m)
     switch (glparamstate.matrixmode) {
     case 0:
         gl_matrix_to_gx44(m, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         gl_matrix_to_gx(m, glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1154,6 +1179,7 @@ void glLoadMatrixf(const GLfloat *m)
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glMultMatrixd(const GLdouble *m)
@@ -1177,11 +1203,9 @@ void glMultMatrixf(const GLfloat *m)
         gl_matrix_to_gx44(m, mtx44);
         guMtx44Concat(glparamstate.projection_matrix, mtx44,
                       glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1190,6 +1214,7 @@ void glMultMatrixf(const GLfloat *m)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         Mtx mtx;
         gl_matrix_to_gx(m, mtx);
@@ -1204,11 +1229,9 @@ void glLoadIdentity()
     switch (glparamstate.matrixmode) {
     case 0:
         guMtx44Identity(glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         guMtxIdentity(glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1220,6 +1243,7 @@ void glLoadIdentity()
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glScalef(GLfloat x, GLfloat y, GLfloat z)
@@ -1233,11 +1257,9 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyScale(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1247,6 +1269,7 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyScale(*target, *target, x, y, z);
     }
@@ -1273,11 +1296,9 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyTrans(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1287,6 +1308,7 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyTrans(*target, *target, x, y, z);
     }
@@ -1307,11 +1329,9 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         rot[3][0] = rot[3][1] = rot[3][2] = 0.0f;
         rot[3][3] = 1.0f;
         guMtx44Concat(glparamstate.projection_matrix, rot, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1321,6 +1341,7 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxConcat(*target, rot, *target);
     }
@@ -1644,6 +1665,7 @@ void glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha
 
 void glDisableClientState(GLenum cap)
 {
+    glparamstate.dirty.bits.dirty_attributes = 1;
     switch (cap) {
     case GL_COLOR_ARRAY:
         glparamstate.cs.color_enabled = 0;
@@ -1671,6 +1693,7 @@ void glDisableClientState(GLenum cap)
 }
 void glEnableClientState(GLenum cap)
 {
+    glparamstate.dirty.bits.dirty_attributes = 1;
     switch (cap) {
     case GL_COLOR_ARRAY:
         glparamstate.cs.color_enabled = 1;
@@ -1699,111 +1722,99 @@ void glEnableClientState(GLenum cap)
 
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS, pointer,
-                           size, type, stride);
+    STATE_ARRAY(POS).vbo = glparamstate.bound_vbo_array;
+    STATE_ARRAY(POS).size = size;
+    STATE_ARRAY(POS).type = type;
+    STATE_ARRAY(POS).stride = stride;
+    STATE_ARRAY(POS).pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM, pointer,
-                           3, type, stride);
+    STATE_ARRAY(NRM).vbo = glparamstate.bound_vbo_array;
+    STATE_ARRAY(NRM).size = 3;
+    STATE_ARRAY(NRM).type = type;
+    STATE_ARRAY(NRM).stride = stride;
+    STATE_ARRAY(NRM).pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glColorPointer(GLint size, GLenum type,
                     GLsizei stride, const GLvoid *pointer)
 {
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0, pointer,
-                           size, type, stride);
+    STATE_ARRAY(CLR).vbo = glparamstate.bound_vbo_array;
+    STATE_ARRAY(CLR).size = size;
+    STATE_ARRAY(CLR).type = type;
+    STATE_ARRAY(CLR).stride = stride;
+    STATE_ARRAY(CLR).pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
     int unit = glparamstate.cs.active_texture;
-    _ogx_array_reader_init(&glparamstate.texcoord_array[unit],
-                           GX_VA_TEX0 + unit, pointer,
-                           size, type, stride);
+    STATE_ARRAY_TEX(unit).vbo = glparamstate.bound_vbo_array;
+    STATE_ARRAY_TEX(unit).size = size;
+    STATE_ARRAY_TEX(unit).type = type;
+    STATE_ARRAY_TEX(unit).stride = stride;
+    STATE_ARRAY_TEX(unit).pointer = pointer;
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
 {
-    const float *vertex_array = pointer;
-    const float *normal_array = pointer;
-    const float *texcoord_array = pointer;
-    const float *color_array = pointer;
+    OgxVertexAttribArray *vertex = &STATE_ARRAY(POS);
+    OgxVertexAttribArray *normal = &STATE_ARRAY(NRM);
+    OgxVertexAttribArray *color = &STATE_ARRAY(CLR);
+    int unit = glparamstate.cs.active_texture;
+    OgxVertexAttribArray *texcoord = &STATE_ARRAY_TEX(unit);
 
     glparamstate.cs.index_enabled = 0;
     glparamstate.cs.normal_enabled = 0;
     glparamstate.cs.texcoord_enabled = 0;
-    glparamstate.cs.vertex_enabled = 0;
+    glparamstate.cs.vertex_enabled = 1; /* This is mandatory */
     glparamstate.cs.color_enabled = 0;
 
-    int cstride = 0;
+    vertex->vbo = 0;
+    vertex->type = GL_FLOAT;
+    vertex->size = 3;
+    color->type = GL_FLOAT;
     switch (format) {
     case GL_V2F:
-        glparamstate.cs.vertex_enabled = 1;
-        cstride = 2;
+        vertex->size = 2;
         break;
     case GL_V3F:
-        glparamstate.cs.vertex_enabled = 1;
-        cstride = 3;
         break;
     case GL_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
-        cstride = 6;
-        vertex_array += 3;
         break;
     case GL_T2F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 5;
-        vertex_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
         break;
     case GL_T2F_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 8;
-
-        vertex_array += 5;
-        normal_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
         break;
-
     case GL_C4F_N3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        cstride = 10;
-
-        vertex_array += 7;
-        normal_array += 4;
+        color->size = 4;
         break;
     case GL_C3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        cstride = 6;
-
-        vertex_array += 3;
+        color->size = 3;
         break;
     case GL_T2F_C3F_V3F:
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 8;
-
-        vertex_array += 5;
-        color_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
+        color->size = 3;
         break;
     case GL_T2F_C4F_N3F_V3F: // Complete type
-        glparamstate.cs.vertex_enabled = 1;
         glparamstate.cs.normal_enabled = 1;
         glparamstate.cs.color_enabled = 1;
-        glparamstate.cs.texcoord_enabled = 1;
-        cstride = 12;
-
-        vertex_array += 9;
-        normal_array += 6;
-        color_array += 2;
+        glparamstate.cs.texcoord_enabled = (1 << unit);
+        color->size = 4;
         break;
 
     case GL_C4UB_V2F:
@@ -1815,15 +1826,35 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
         return;
     }
 
-    if (stride == 0) stride = cstride * sizeof(float);
-    _ogx_array_reader_init(&glparamstate.vertex_array, GX_VA_POS,
-                           vertex_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.normal_array, GX_VA_NRM,
-                           normal_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.texcoord_array[0], GX_VA_TEX0,
-                           texcoord_array, 0, GL_FLOAT, stride);
-    _ogx_array_reader_init(&glparamstate.color_array, GX_VA_CLR0,
-                           color_array, 0, GL_FLOAT, stride);
+    const char *ptr = pointer;
+    if (glparamstate.cs.texcoord_enabled) {
+        texcoord->vbo = 0;
+        texcoord->pointer = ptr;
+        texcoord->type = GL_FLOAT;
+        texcoord->size = 2;
+        ptr += 2 * sizeof(float);
+    }
+    if (glparamstate.cs.color_enabled) {
+        color->vbo = 0;
+        color->pointer = ptr;
+        /* TODO: use other type when implementing UB color support */
+        ptr += color->size * sizeof(float);
+    }
+    if (glparamstate.cs.normal_enabled) {
+        normal->vbo = 0;
+        normal->pointer = ptr;
+        normal->type = GL_FLOAT;
+        normal->size = 3;
+        ptr += 3 * sizeof(float);
+    }
+    /* Vertices are always enabled */
+    vertex->pointer = ptr;
+    ptr += vertex->size * sizeof(float);
+    if (stride == 0) stride = ptr - (const char *)pointer;
+    vertex->stride = normal->stride = texcoord->stride =
+        color->stride = stride;
+
+    glparamstate.dirty.bits.dirty_attributes = 1;
 }
 
 /*
@@ -2043,9 +2074,102 @@ static LightMasks prepare_lighting()
     return masks;
 }
 
-DrawMode _ogx_draw_mode(GLenum mode)
+static int count_color_channels()
 {
-    DrawMode dm = { 0xff, false };
+    int color_provide = 0;
+    if (glparamstate.cs.color_enabled &&
+        (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
+        if (glparamstate.lighting.enabled)
+            color_provide = 2; // Lighting requires two color channels
+        else
+            color_provide = 1;
+    }
+    return color_provide;
+}
+
+static inline bool point_sprites_texcoord_replace(uint8_t gxmode)
+{
+    return gxmode == GX_POINTS &&
+        glparamstate.point_sprites_enabled &&
+        glparamstate.point_sprites_coord_replace;
+}
+
+static inline bool point_sprites_changed(uint8_t gxmode)
+{
+    bool enabled = point_sprites_texcoord_replace(gxmode);
+    if (enabled != s_point_sprites_was_enabled) {
+        s_point_sprites_was_enabled = enabled;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/* "fp" stands for "fixed pipeline" */
+void _ogx_fp_update_vertex_array_readers(OgxDrawMode mode)
+{
+    if (glparamstate.cs.vertex_enabled) {
+        _ogx_array_add(GX_VA_POS, &STATE_ARRAY(POS));
+    }
+
+    if (glparamstate.cs.normal_enabled) {
+        _ogx_array_add(GX_VA_NRM, &STATE_ARRAY(NRM));
+    }
+
+    if (glparamstate.cs.color_enabled) {
+        int num_channels = count_color_channels();
+        for (int i = 0; i < num_channels; i++)
+            _ogx_array_add(GX_VA_CLR0, &STATE_ARRAY(CLR));
+    }
+
+    for (int unit = 0; unit < MAX_TEXTURE_UNITS; unit++) {
+        if (!(glparamstate.texture_enabled & (1 << unit))) continue;
+
+        OgxTextureUnit *tu = &glparamstate.texture_unit[unit];
+
+        if (point_sprites_texcoord_replace(mode.mode)) {
+            /* We assume that GL_POINT_SPRITE_COORD_ORIGIN is set to
+             * GL_UPPER_LEFT */
+            float coords[2] = { 0.0f, 0.0f };
+            tu->array_reader =
+                _ogx_array_add_constant_fv(GX_VA_TEX0, 2, coords);
+        } else if (tu->gen_enabled &&
+                   _ogx_texture_gen_sw_enabled(unit)) {
+            /* Some kinds of texture generation cannot be performed by the GPU,
+             * and we have to generate the texture coordinates in software. */
+            OgxGenerator_fv generator = NULL;
+            switch (tu->gen_mode) {
+            case GL_SPHERE_MAP:
+                generator = _ogx_texture_gen_sw_sphere_map;
+                break;
+            }
+            tu->array_reader =
+                _ogx_array_add_generator_fv(GX_VA_TEX0, 2, generator);
+        } else if (glparamstate.cs.texcoord_enabled & (1 << unit)) {
+            tu->array_reader =
+                _ogx_array_add(GX_VA_TEX0, &STATE_ARRAY_TEX(unit));
+        } else {
+            tu->array_reader = NULL;
+        }
+    }
+}
+
+void _ogx_update_vertex_array_readers(OgxDrawMode mode)
+{
+    _ogx_arrays_reset();
+
+    if (glparamstate.current_program) {
+        _ogx_shader_update_vertex_array_readers(mode);
+    } else {
+        _ogx_fp_update_vertex_array_readers(mode);
+    }
+
+    glparamstate.dirty.bits.dirty_attributes = 0;
+}
+
+OgxDrawMode _ogx_draw_mode(GLenum mode)
+{
+    OgxDrawMode dm = { 0xff, false };
 
     if (glparamstate.polygon_mode != GL_FILL) {
         if (glparamstate.polygon_mode == GL_POINT) {
@@ -2102,7 +2226,7 @@ static void setup_fog()
      */
 
     if (glparamstate.fog.enabled) {
-        get_projection_info(&proj_type, &near, &far);
+        get_projection_info(glparamstate.projection_matrix, &proj_type, &near, &far);
 
         color = gxcol_new_fv(glparamstate.fog.color);
         switch (glparamstate.fog.mode) {
@@ -2143,13 +2267,32 @@ static void setup_fog()
     GX_SetFog(mode, start, end, near, far, color);
 }
 
+static bool setup_common_stages()
+{
+    if (glparamstate.stencil.enabled) {
+        bool should_draw = _ogx_stencil_setup_tev();
+        if (!should_draw) return false;
+    }
+
+    if (glparamstate.clip_plane_mask != 0) {
+        _ogx_clip_setup_tev();
+    }
+
+    /* Stages and texture coordinate slots must be enabled sequentially, so we
+     * know that the number of used resources is given by
+     * OgxGpuResources::{tevstage,texcoord}_first. */
+    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
+    return true;
+}
+
 bool _ogx_setup_render_stages()
 {
     if (!glparamstate.dirty.bits.dirty_tev) return true;
 
     u8 raster_output, raster_reg_index;
     if (glparamstate.texture_enabled) {
-        raster_reg_index = _ogx_gpu_resources->tevreg_first++;
+        raster_reg_index = ogx_gpu_resources->tevreg_first++;
         raster_output = GX_TEVREG0 + raster_reg_index;
     } else {
         raster_output = GX_TEVPREV;
@@ -2161,7 +2304,7 @@ bool _ogx_setup_render_stages()
         GXColor color_black = { 0, 0, 0, 255 };
         GXColor color_gamb = gxcol_new_fv(glparamstate.lighting.globalambient);
 
-        _ogx_gpu_resources->tevstage_first += 2;
+        ogx_gpu_resources->tevstage_first += 2;
         GX_SetNumChans(2);
 
         unsigned char vert_color_src = GX_SRC_VTX;
@@ -2232,7 +2375,7 @@ bool _ogx_setup_render_stages()
 
         // STAGE 0: ambient*vert_color -> cprev
         // In data: d: Raster Color, a: emission color
-        u8 emission_reg = _ogx_gpu_resources->tevreg_first++;
+        u8 emission_reg = ogx_gpu_resources->tevreg_first++;
         GX_SetTevColor(GX_TEVREG0 + emission_reg, ecol);
         /* Multiply by two because there are alpha registers in between */
         GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_C0 + emission_reg * 2,
@@ -2284,7 +2427,7 @@ bool _ogx_setup_render_stages()
             _ogx_setup_texture_stages(raster_reg_index, GX_COLOR0A0);
         } else {
             // Use one stage only
-            _ogx_gpu_resources->tevstage_first += 1;
+            ogx_gpu_resources->tevstage_first += 1;
             // In data: d: Raster Color
             GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
             GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
@@ -2296,22 +2439,16 @@ bool _ogx_setup_render_stages()
         }
     }
 
-    if (glparamstate.stencil.enabled) {
-        bool should_draw = _ogx_stencil_setup_tev();
-        if (!should_draw) return false;
-    }
-
-    if (glparamstate.clip_plane_mask != 0) {
-        _ogx_clip_setup_tev();
-    }
-
-    /* Stages and texture coordinate slots must be enabled sequentially, so we
-     * know that the number of used resources is given by
-     * OgxGpuResources::{tevstage,texcoord}_first. */
-    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
-    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
+    bool should_draw = setup_common_stages();
     glparamstate.dirty.bits.dirty_tev = false;
-    return true;
+    return should_draw;
+}
+
+void _ogx_update_matrices_fixed_pipeline()
+{
+    update_modelview_matrix();
+    update_projection_matrix();
+    update_normal_matrix();
 }
 
 void _ogx_apply_state()
@@ -2354,15 +2491,8 @@ void _ogx_apply_state()
         setup_cull_mode();
     }
 
-    // Matrix stuff
-    if (glparamstate.dirty.bits.dirty_matrices) {
-        update_modelview_matrix();
-        update_projection_matrix();
-    }
-    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
-        update_normal_matrix();
-    }
-
+    /* Though glFog*() functions can be replaced by shaders, the OpenGL spec
+     * allows them to be used even when shaders are active. */
     if (glparamstate.dirty.bits.dirty_fog) {
         setup_fog();
         glparamstate.dirty.bits.dirty_fog = 0;
@@ -2376,35 +2506,44 @@ void _ogx_apply_state()
      * to 0 because some states might still be dirty: for example, the stencil
      * checks alters the texture coordinate generation. */
     glparamstate.dirty.bits.dirty_cull = 0;
-    glparamstate.dirty.bits.dirty_matrices = 0;
     glparamstate.dirty.bits.dirty_alphatest = 0;
     glparamstate.dirty.bits.dirty_blend = 0;
     glparamstate.dirty.bits.dirty_color_update = 0;
     glparamstate.dirty.bits.dirty_z = 0;
 }
 
-typedef struct {
-    DrawMode gxmode;
-    GLint first;
-    GLsizei count;
-} OgxDrawData;
+static void draw_arrays_general(const OgxDrawData *draw_data)
+{
+    GLsizei count = draw_data->count;
+    GLsizei first = draw_data->first;
+    // Invalidate vertex data as may have been modified by the user
+    GX_InvVtxCache();
+
+    bool loop = draw_data->gxmode.loop;
+    GX_Begin(draw_data->gxmode.mode, GX_VTXFMT0, count + loop);
+    int i;
+    for (i = 0; i < count + loop; i++) {
+        int j = i % count + first;
+        _ogx_arrays_process_element(j);
+    }
+    GX_End();
+}
 
 static void flat_draw_geometry(void *cb_data)
 {
     OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data->gxmode.mode,
-                           false, /* no normals */
-                           false, /* no color */
-                           false /* no texturing */);
+    _ogx_arrays_setup_draw(data, OGX_DRAW_FLAG_FLAT);
     /* TODO: we could use C++ templates here too, to build more effective
      * drawing functions that only process the data we need. */
-    draw_arrays_general(data->gxmode, data->first, data->count);
+    draw_arrays_general(data);
 }
 
-static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
-                                  const GLvoid *indices)
+static void draw_elements_general(const OgxDrawData *draw_data)
 {
+    const GLvoid *indices = draw_data->indices;
+    GLsizei count = draw_data->count;
+
     // Invalidate vertex data as may have been modified by the user
     GX_InvVtxCache();
 
@@ -2413,112 +2552,120 @@ static void draw_elements_general(DrawMode gxmode, int count, GLenum type,
                                     indices);
     }
 
-    bool loop = gxmode.loop;
-    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
+    bool loop = draw_data->gxmode.loop;
+    GX_Begin(draw_data->gxmode.mode, GX_VTXFMT0, count + loop);
     for (int i = 0; i < count + loop; i++) {
-        int index = read_index(indices, type, i % count);
+        int index = read_index(indices, draw_data->type, i % count);
         _ogx_arrays_process_element(index);
     }
     GX_End();
 }
 
-typedef struct {
-    DrawMode gxmode;
-    GLsizei count;
-    GLenum type;
-    const GLvoid *indices;
-} OgxDrawElementsData;
-
 static void flat_draw_elements(void *cb_data)
 {
-    OgxDrawElementsData *data = cb_data;
+    OgxDrawData *data = cb_data;
 
-    _ogx_arrays_setup_draw(data->gxmode.mode,
-                           false, /* no normals */
-                           false, /* no color */
-                           false /* no texturing */);
-
-    /* TODO: we could use C++ templates here too, to build more effective
-     * drawing functions that only process the data we need. */
-    draw_elements_general(data->gxmode, data->count, data->type, data->indices);
+    _ogx_arrays_setup_draw(data, OGX_DRAW_FLAG_FLAT);
+    draw_elements_general(data);
 }
 
 void glArrayElement(GLint i)
 {
     float value[3];
-    if (glparamstate.imm_mode.in_gl_begin && glparamstate.cs.vertex_enabled) {
-        _ogx_array_reader_read_pos3f(&glparamstate.vertex_array, i, value);
-        glVertex3fv(value);
+
+    if (glparamstate.dirty.bits.dirty_attributes) {
+        /* The draw mode is not really relevant here, since the actual drawing
+         * is performed in glEnd(), at which time we'll take care of handling
+         * point sprites (if enabled). */
+        OgxDrawMode mode = { GX_TRIANGLES, true };
+        _ogx_update_vertex_array_readers(mode);
     }
 
-    if (glparamstate.cs.normal_enabled) {
-        _ogx_array_reader_read_norm3f(&glparamstate.normal_array, i, value);
+    OgxArrayReader *reader = _ogx_array_reader_for_attribute(GX_VA_NRM);
+    if (reader) {
+        _ogx_array_reader_read_norm3f(reader, i, value);
         glNormal3fv(value);
     }
 
     for (int tex = 0; tex < MAX_TEXTURE_UNITS; tex++) {
-        if (glparamstate.cs.texcoord_enabled & (1 << tex)) {
-            _ogx_array_reader_read_tex2f(&glparamstate.texcoord_array[tex],
-                                         i, value);
+        reader = _ogx_array_reader_for_attribute(GX_VA_TEX0 + tex);
+        if (reader) {
+            _ogx_array_reader_read_tex2f(reader, i, value);
             glMultiTexCoord2fv(GL_TEXTURE0 + tex, value);
         }
     }
 
-    if (glparamstate.cs.color_enabled) {
+    reader = _ogx_array_reader_for_attribute(GX_VA_CLR0);
+    if (reader) {
         GXColor color;
-        _ogx_array_reader_read_color(&glparamstate.color_array, i, &color);
+        _ogx_array_reader_read_color(reader, i, &color);
         glColor4ub(color.r, color.g, color.b, color.a);
+    }
+
+    reader = _ogx_array_reader_for_attribute(GX_VA_POS);
+    if (reader) {
+        _ogx_array_reader_read_pos3f(reader, i, value);
+        glVertex3fv(value);
     }
 }
 
-static bool setup_draw(uint8_t gxmode)
+static bool setup_draw(const OgxDrawData *draw_data)
 {
     _ogx_efb_set_content_type(OGX_EFB_SCENE);
 
-    uint8_t texen = glparamstate.texture_enabled;
-    uint8_t color_provide = 0;
-    if (glparamstate.cs.color_enabled &&
-        (!glparamstate.lighting.enabled || glparamstate.lighting.color_material_enabled)) { // Vertex colouring
-        if (glparamstate.lighting.enabled)
-            color_provide = 2; // Lighting requires two color channels
-        else
-            color_provide = 1;
-    }
-    _ogx_arrays_setup_draw(gxmode,
-                           glparamstate.cs.normal_enabled, color_provide, texen);
+    if (!glparamstate.current_program) {
+        _ogx_arrays_setup_draw(draw_data, OGX_DRAW_FLAG_NONE);
 
-    /* Note that _ogx_setup_render_stages() uses some information from the
-     * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
-     * after it. */
-    bool should_draw = _ogx_setup_render_stages();
-    if (!should_draw) return false;
+        /* Note that _ogx_setup_render_stages() uses some information from the
+         * vertex arrays computed by _ogx_arrays_setup_draw(), so it must be called
+         * after it. */
+        bool should_draw = _ogx_setup_render_stages();
+        if (!should_draw) return false;
+    } else {
+        _ogx_shader_setup_draw(draw_data);
+        if (!setup_common_stages()) return false;
+    }
     _ogx_apply_state();
     return true;
 }
 
+void _ogx_update_matrices()
+{
+    if (glparamstate.dirty.bits.dirty_matrices) {
+        glparamstate.update_matrices();
+        glparamstate.dirty.bits.dirty_matrices = 0;
+    }
+}
+
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
     HANDLE_CALL_LIST(DRAW_ARRAYS, mode, first, count);
 
+    if (glparamstate.dirty.bits.dirty_attributes ||
+        /* Point sprites need special handling */
+        point_sprites_changed(gxmode.mode))
+        _ogx_update_vertex_array_readers(gxmode);
+
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    _ogx_update_matrices();
+    OgxDrawData draw_data = { gxmode, count, first, };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
-        OgxDrawData draw_data = { gxmode, first, count };
         _ogx_stencil_draw(flat_draw_geometry, &draw_data);
         _ogx_gpu_resources_pop();
     }
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw(gxmode.mode);
+    bool should_draw = setup_draw(&draw_data);
     if (should_draw) {
-        draw_arrays_general(gxmode, first, count);
+        draw_arrays_general(&draw_data);
         glparamstate.draw_count++;
     }
     _ogx_arrays_draw_done();
@@ -2528,47 +2675,38 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
 {
-    DrawMode gxmode = _ogx_draw_mode(mode);
+    OgxDrawMode gxmode = _ogx_draw_mode(mode);
     if (gxmode.mode == 0xff)
         return;
 
     HANDLE_CALL_LIST(DRAW_ELEMENTS, mode, count, type, indices);
 
+    if (glparamstate.dirty.bits.dirty_attributes ||
+        /* Point sprites need special handling */
+        point_sprites_changed(gxmode.mode))
+        _ogx_update_vertex_array_readers(gxmode);
+
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    _ogx_update_matrices();
+    OgxDrawData draw_data = { gxmode, count, 0, type, indices };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
-        OgxDrawElementsData draw_data = { gxmode, count, type, indices };
         _ogx_stencil_draw(flat_draw_elements, &draw_data);
         _ogx_gpu_resources_pop();
     }
 
     _ogx_gpu_resources_push();
 
-    bool should_draw = setup_draw(gxmode.mode);
+    bool should_draw = setup_draw(&draw_data);
     if (should_draw) {
-        draw_elements_general(gxmode, count, type, indices);
+        draw_elements_general(&draw_data);
         glparamstate.draw_count++;
     }
     _ogx_arrays_draw_done();
 
     _ogx_gpu_resources_pop();
-}
-
-static void draw_arrays_general(DrawMode gxmode, int first, int count)
-{
-    // Invalidate vertex data as may have been modified by the user
-    GX_InvVtxCache();
-
-    bool loop = gxmode.loop;
-    GX_Begin(gxmode.mode, GX_VTXFMT0, count + loop);
-    int i;
-    for (i = 0; i < count + loop; i++) {
-        int j = i % count + first;
-        _ogx_arrays_process_element(j);
-    }
-    GX_End();
 }
 
 void glFrustum(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top,

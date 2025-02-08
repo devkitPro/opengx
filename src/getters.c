@@ -39,6 +39,37 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 static const GLubyte gl_null_string[1] = { 0 };
+/* This is not static because we might modify it in place */
+static GLubyte s_extension_string[] =
+    "GL_ARB_multitexture "
+    "GL_ARB_vertex_buffer_object ";
+
+static int prepare_extension_strings()
+{
+    int count = 0;
+    for (GLubyte *ptr = s_extension_string; *ptr != '\0'; ptr++) {
+        if (*ptr == ' ') {
+            *ptr = '\0';
+            count++;
+        }
+    }
+}
+
+static GLubyte *get_extension_string(int index)
+{
+    int count = 0;
+    GLubyte *ptr = s_extension_string;
+    while (count < index) {
+        while (*ptr != '\0') ptr++;
+        ptr++;
+        if (*ptr == '\0') {
+            /* Two null bytes mean that we have reached the end */
+            return NULL;
+        }
+        count++;
+    }
+    return ptr;
+}
 
 GLenum glGetError(void)
 {
@@ -55,11 +86,9 @@ const GLubyte *glGetString(GLenum name)
     case GL_RENDERER:
         return "libogc";
     case GL_VERSION:
-        return "1.1";
+        return ogx_get_proc_address("glUseProgram") ? "3.3" : "1.5";
     case GL_EXTENSIONS:
-        return
-            "GL_ARB_multitexture "
-            "GL_ARB_vertex_buffer_object ";
+        return s_extension_string;
     default:
         set_error(GL_INVALID_ENUM);
         return gl_null_string;
@@ -73,6 +102,13 @@ GLboolean glIsEnabled(GLenum cap)
         return glparamstate.alphatest_enabled;
     case GL_BLEND:
         return glparamstate.blendenabled;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+        return glparamstate.clip_plane_mask & (1 << (cap - GL_CLIP_PLANE0));
     case GL_COLOR_ARRAY:
         return glparamstate.cs.color_enabled;
     case GL_COLOR_MATERIAL:
@@ -131,6 +167,12 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
     switch (pname) {
     case GL_ALPHA_TEST:
     case GL_BLEND:
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
     case GL_COLOR_ARRAY:
     case GL_CULL_FACE:
     case GL_DEPTH_TEST:
@@ -158,15 +200,6 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
     case GL_TEXTURE_GEN_Q:
     case GL_VERTEX_ARRAY:
         *params - glIsEnabled(pname);
-        return;
-    case GL_CLIP_PLANE0:
-    case GL_CLIP_PLANE1:
-    case GL_CLIP_PLANE2:
-    case GL_CLIP_PLANE3:
-    case GL_CLIP_PLANE4:
-    case GL_CLIP_PLANE5:
-        *params =
-            glparamstate.clip_plane_mask & (1 << (pname - GL_CLIP_PLANE0));
         return;
     case GL_CURRENT_RASTER_POSITION_VALID:
         *params = glparamstate.raster_pos_valid ? GL_TRUE : GL_FALSE;
@@ -266,6 +299,15 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_CLIENT_ACTIVE_TEXTURE:
         *params = GL_TEXTURE0 + glparamstate.cs.active_texture;
         break;
+    case GL_COLOR_ARRAY_SIZE:
+        *params = STATE_ARRAY(CLR).size;
+        return;
+    case GL_COLOR_ARRAY_STRIDE:
+        *params = STATE_ARRAY(CLR).stride;
+        return;
+    case GL_COLOR_ARRAY_TYPE:
+        *params = STATE_ARRAY(CLR).type;
+        return;
     case GL_ELEMENT_ARRAY_BUFFER_BINDING:
         *params = glparamstate.bound_vbo_element_array;
         break;
@@ -293,6 +335,9 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_MAX_TEXTURE_SIZE:
         *params = 1024;
         return;
+    case GL_MAX_VERTEX_ATTRIBS:
+        *params = MAX_VERTEX_ATTRIBS;
+        return;
     case GL_MODELVIEW_STACK_DEPTH:
         *params = MAX_MODV_STACK;
         return;
@@ -307,6 +352,15 @@ void glGetIntegerv(GLenum pname, GLint *params)
         break;
     case GL_NAME_STACK_DEPTH:
         *params = glparamstate.name_stack_depth;
+        return;
+    case GL_NUM_EXTENSIONS:
+        *params = prepare_extension_strings();
+        return;
+    case GL_NORMAL_ARRAY_STRIDE:
+        *params = STATE_ARRAY(NRM).stride;
+        return;
+    case GL_NORMAL_ARRAY_TYPE:
+        *params = STATE_ARRAY(NRM).type;
         return;
     case GL_PACK_ROW_LENGTH:
         *params = glparamstate.pack_row_length;
@@ -374,6 +428,24 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_STENCIL_WRITEMASK:
         *params = glparamstate.stencil.wmask;
         break;
+    case GL_TEXTURE_COORD_ARRAY_SIZE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = STATE_ARRAY_TEX(unit).size;
+        }
+        return;
+    case GL_TEXTURE_COORD_ARRAY_STRIDE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = STATE_ARRAY_TEX(unit).stride;
+        }
+        return;
+    case GL_TEXTURE_COORD_ARRAY_TYPE:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = STATE_ARRAY_TEX(unit).type;
+        }
+        return;
     case GL_UNPACK_ROW_LENGTH:
         *params = glparamstate.unpack_row_length;
         break;
@@ -392,6 +464,15 @@ void glGetIntegerv(GLenum pname, GLint *params)
     case GL_UNPACK_ALIGNMENT:
         *params = glparamstate.unpack_alignment;
         break;
+    case GL_VERTEX_ARRAY_SIZE:
+        *params = STATE_ARRAY(POS).size;
+        return;
+    case GL_VERTEX_ARRAY_STRIDE:
+        *params = STATE_ARRAY(POS).stride;
+        return;
+    case GL_VERTEX_ARRAY_TYPE:
+        *params = STATE_ARRAY(POS).type;
+        return;
     case GL_VIEWPORT:
         memcpy(params, glparamstate.viewport, 4 * sizeof(int));
         return;
@@ -426,3 +507,31 @@ void glGetIntegerv(GLenum pname, GLint *params)
     };
 }
 
+void glGetPointerv(GLenum pname, GLvoid **params)
+{
+    switch (pname) {
+    case GL_COLOR_ARRAY_POINTER:
+        *params = (void*)STATE_ARRAY(CLR).pointer;
+        return;
+    case GL_NORMAL_ARRAY_POINTER:
+        *params = (void*)STATE_ARRAY(NRM).pointer;
+        return;
+    case GL_TEXTURE_COORD_ARRAY_POINTER:
+        {
+            int unit = glparamstate.cs.active_texture;
+            *params = (void*)STATE_ARRAY_TEX(unit).pointer;
+        }
+        return;
+    case GL_VERTEX_ARRAY_POINTER:
+        *params = (void*)STATE_ARRAY(POS).pointer;
+        return;
+    }
+}
+
+const GLubyte *glGetStringi(GLenum name, GLuint index)
+{
+    if (name == GL_EXTENSIONS) {
+        return get_extension_string(index);
+    }
+    return NULL;
+}
