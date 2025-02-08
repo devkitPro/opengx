@@ -33,6 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define OPENGX_H
 
 #include <GL/gl.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -99,6 +100,23 @@ typedef enum {
 } OgxStencilFlags;
 
 void ogx_stencil_create(OgxStencilFlags flags);
+
+typedef struct _OgxDrawMode {
+    uint8_t mode;
+    bool loop;
+} OgxDrawMode;
+
+typedef struct _OgxDrawData {
+    OgxDrawMode gxmode;
+    GLsizei count;
+
+    /* for drawing arrays: */
+    GLint first;
+
+    /* for drawing elements: */
+    GLenum type;
+    const GLvoid *indices;
+} OgxDrawData;
 
 #ifdef __cplusplus
 } // extern C
