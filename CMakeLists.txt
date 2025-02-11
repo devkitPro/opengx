@@ -3,6 +3,7 @@ project(OpenGX VERSION 0.1)
 
 option(BUILD_OPENGX "Build the opengx library" ON)
 option(BUILD_DOCS "Build the documentation" OFF)
+option(BUILD_EXAMPLES "Build the examples" OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -38,6 +39,8 @@ add_library(${TARGET} STATIC
     src/gpu_resources.h
     src/image_DXT.c
     src/image_DXT.h
+    src/murmurhash3.cpp
+    src/murmurhash3.h
     src/opengx.h
     src/pixel_stream.cpp
     src/pixel_stream.h
@@ -45,6 +48,12 @@ add_library(${TARGET} STATIC
     src/pixels.h
     src/raster.cpp
     src/selection.c
+    src/shader.c
+    src/shader.h
+    src/shader_api.c
+    src/shader_attribute.cpp
+    src/shader_functions.h
+    src/shader_uniform.c
     src/state.h
     src/stencil.c
     src/stencil.h
@@ -64,6 +73,7 @@ set_target_properties(${TARGET} PROPERTIES
 )
 
 target_include_directories(${TARGET} PUBLIC
+    src/
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
@@ -75,7 +85,7 @@ install(TARGETS ${TARGET}
     RUNTIME
     PUBLIC_HEADER
 )
-install(DIRECTORY "include/GL" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(DIRECTORY "include/GL" "include/KHR" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/opengl.pc
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 install(FILES OpenGLConfig.cmake
@@ -86,4 +96,8 @@ endif(BUILD_OPENGX)
 if(BUILD_DOCS)
     include(UseLATEX)
     add_subdirectory(doc/src)
+endif()
+
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()
