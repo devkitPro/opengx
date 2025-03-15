@@ -351,6 +351,8 @@ void _ogx_setup_2D_projection(void);
 /* Set the OpenGL 3D modelview and projection matrices */
 void _ogx_setup_3D_projection(void);
 
+void _ogx_set_projection(const Mtx44 matrix);
+
 bool _ogx_setup_render_stages(void);
 void _ogx_update_vertex_array_readers(OgxDrawMode mode);
 

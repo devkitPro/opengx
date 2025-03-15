@@ -148,6 +148,8 @@ typedef struct glparams_
     Mtx44 projection_matrix;
     Mtx modelview_stack[MAX_MODV_STACK];
     Mtx44 projection_stack[MAX_PROJ_STACK];
+    Mtx *mv_ptr;
+    Mtx44 *proj_ptr;
     ClipPlane clip_planes[MAX_CLIP_PLANES];
     float raster_pos[4];
     float pixel_zoom_x;
@@ -339,6 +341,7 @@ typedef struct glparams_
     } current_call_list;
 
     GLuint current_program;
+    void (*update_matrices)(void);
 
     bool compat_profile;
     GLenum error;
@@ -351,6 +354,8 @@ extern glparams_ _ogx_state;
 #define texture_list _ogx_state.textures
 
 void _ogx_apply_state(void);
+void _ogx_update_matrices(void);
+void _ogx_update_matrices_fixed_pipeline(void);
 
 #ifdef __cplusplus
 } // extern C

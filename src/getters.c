@@ -102,6 +102,13 @@ GLboolean glIsEnabled(GLenum cap)
         return glparamstate.alphatest_enabled;
     case GL_BLEND:
         return glparamstate.blendenabled;
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
+        return glparamstate.clip_plane_mask & (1 << (cap - GL_CLIP_PLANE0));
     case GL_COLOR_ARRAY:
         return glparamstate.cs.color_enabled;
     case GL_COLOR_MATERIAL:
@@ -160,6 +167,12 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
     switch (pname) {
     case GL_ALPHA_TEST:
     case GL_BLEND:
+    case GL_CLIP_PLANE0:
+    case GL_CLIP_PLANE1:
+    case GL_CLIP_PLANE2:
+    case GL_CLIP_PLANE3:
+    case GL_CLIP_PLANE4:
+    case GL_CLIP_PLANE5:
     case GL_COLOR_ARRAY:
     case GL_CULL_FACE:
     case GL_DEPTH_TEST:
@@ -187,15 +200,6 @@ void glGetBooleanv(GLenum pname, GLboolean *params)
     case GL_TEXTURE_GEN_Q:
     case GL_VERTEX_ARRAY:
         *params - glIsEnabled(pname);
-        return;
-    case GL_CLIP_PLANE0:
-    case GL_CLIP_PLANE1:
-    case GL_CLIP_PLANE2:
-    case GL_CLIP_PLANE3:
-    case GL_CLIP_PLANE4:
-    case GL_CLIP_PLANE5:
-        *params =
-            glparamstate.clip_plane_mask & (1 << (pname - GL_CLIP_PLANE0));
         return;
     case GL_CURRENT_RASTER_POSITION_VALID:
         *params = glparamstate.raster_pos_valid ? GL_TRUE : GL_FALSE;

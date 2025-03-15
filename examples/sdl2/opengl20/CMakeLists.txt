@@ -9,7 +9,18 @@ endif()
 
 macro(add_example name)
     add_executable(${name} ${EXTRA_FILES} ${ARGN})
+    if (TARGET textures)
+        list(APPEND EXTRA_LIBS textures)
+    endif()
+    if (TARGET PkgConfig::GLM)
+        list(APPEND EXTRA_LIBS PkgConfig::GLM)
+    endif()
     target_link_libraries(${name} ${EXTRA_LIBS} m PkgConfig::SDL2)
 endmacro()
 
+pkg_check_modules(GLM IMPORTED_TARGET glm)
+
+if(GLM_FOUND)
+    add_example(cube_tex cube_tex.cpp)
+endif()
 add_example(gl2gears gl2gears.c)

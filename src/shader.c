@@ -204,6 +204,15 @@ static char get_attribute_bound_location(OgxProgram *p, const char *name)
     return MAX_VERTEX_ATTRIBS; /* invalid value */
 }
 
+static void setup_matrices()
+{
+    OgxProgram *p = PROGRAM_FROM_INT(glparamstate.current_program);
+
+    if (p->setup_matrices_cb) {
+        p->setup_matrices_cb(PROGRAM_TO_INT(p), p->user_data);
+    }
+}
+
 void glAttachShader(GLuint program, GLuint shader)
 {
     OgxProgram *p = PROGRAM_FROM_INT(program);
@@ -641,6 +650,9 @@ void glGetVertexAttribiv(GLuint index, GLenum pname, GLint *params)
     if (!v) return;
 
     switch (pname) {
+    case GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING:
+        *params = v->array.vbo;
+        return;
     case GL_VERTEX_ATTRIB_ARRAY_ENABLED:
         *params = v->array_enabled;
         return;
@@ -889,6 +901,17 @@ void glUseProgram(GLuint program)
     OgxProgram *old = PROGRAM_FROM_INT(glparamstate.current_program);
     glparamstate.current_program = program;
     glparamstate.dirty.bits.dirty_attributes = 1;
+    glparamstate.dirty.bits.dirty_matrices = 1;
+
+    if (program != 0) {
+        glparamstate.mv_ptr = &_ogx_shader_state.mv_matrix;
+        glparamstate.proj_ptr = &_ogx_shader_state.proj_matrix;
+        glparamstate.update_matrices = setup_matrices;
+    } else {
+        glparamstate.mv_ptr = &glparamstate.modelview_matrix;
+        glparamstate.proj_ptr = &glparamstate.projection_matrix;
+        glparamstate.update_matrices = _ogx_update_matrices_fixed_pipeline;
+    }
 
     if (old && old->deletion_requested) {
         glDeleteProgram(PROGRAM_TO_INT(old));
@@ -911,6 +934,7 @@ void glVertexAttribPointer(GLuint index, GLint size, GLenum type,
     OgxVertexAttribState *v = &_ogx_shader_state.vertex_attribs[index];
     if (!v) return;
 
+    v->array.vbo = glparamstate.bound_vbo_array;
     v->array.size = size;
     v->array.type = type;
     v->array.normalized = normalized;
@@ -997,6 +1021,13 @@ void ogx_shader_program_set_setup_draw_cb(GLuint program,
 {
     OgxProgram *p = PROGRAM_FROM_INT(program);
     p->setup_draw_cb = setup_draw;
+}
+
+void ogx_shader_program_set_setup_matrices_cb(
+    GLuint program, OgxSetupMatricesCb setup_matrices)
+{
+    OgxProgram *p = PROGRAM_FROM_INT(program);
+    p->setup_matrices_cb = setup_matrices;
 }
 
 void *ogx_shader_get_data(GLuint shader)

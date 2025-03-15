@@ -131,6 +131,7 @@ struct _OgxProgram {
 
     void *user_data;
     OgxSetupDrawCb setup_draw_cb;
+    OgxSetupMatricesCb setup_matrices_cb;
     OgxCleanupCb cleanup_user_data_cb;
 };
 
@@ -149,6 +150,10 @@ typedef struct {
      * separate array so that we can use consecutive elements as matrix
      * columns. */
     Vec4f vertex_attrib_data[MAX_VERTEX_ATTRIBS];
+
+    /* Transformation matrices */
+    Mtx mv_matrix;
+    Mtx44 proj_matrix;
 } OgxShaderState;
 
 typedef struct _OgxVertexAttribState OgxVertexAttribState;

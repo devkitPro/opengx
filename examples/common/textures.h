@@ -1,9 +1,5 @@
 /*****************************************************************************
-Copyright (c) 2011  David Guillen Fandos (david@davidgf.net)
 Copyright (c) 2024  Alberto Mardegan (mardy@users.sourceforge.net)
-All rights reserved.
-
-Attention! Contains pieces of code from others such as Mesa and GRRLib
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -29,58 +25,29 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
-
-#ifndef OPENGX_TYPES_H
-#define OPENGX_TYPES_H
+#ifndef TEXTURES_H
+#define TEXTURES_H
 
 #include <GL/gl.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define MAX_VERTEX_ATTRIBS 16
+#define DECLARE_EMBEDDED_FILE(basename) \
+    extern char _binary_ ## basename ## _start[], _binary_ ## basename ## _end[]
 
-/* Now we support as much as 255 VBOs, but, should we support more, we'll need
- * to use a larger type for the index. */
-typedef uint8_t VboType;
+DECLARE_EMBEDDED_FILE(grid512_png);
+DECLARE_EMBEDDED_FILE(mix256_png);
 
-typedef float Pos3f[3];
-typedef float Norm3f[3];
-typedef float Tex2f[2];
-typedef float Vec4f[4];
+#define textures_load(basename) \
+    textures_load_range(_binary_ ## basename ## _start, \
+                        _binary_ ## basename ## _end)
 
-typedef struct _OgxVertexAttribArray {
-    unsigned normalized : 1;
-    unsigned size : 3; /* max is 4 */
-    uint8_t stride;
-    /* This could be stored in a union with the "pointer" field, since 24 or 16
-     * bits are enough for the offset. TODO: evaluate if it's worth doing. */
-    VboType vbo;
-    GLenum type;
-    const void *pointer;
-} OgxVertexAttribArray;
-
-typedef struct {
-    const char *name;
-    void *address;
-} OgxProcMap;
-
-typedef struct {
-    size_t num_functions;
-    const OgxProcMap *functions;
-} OgxFunctions;
-
-typedef struct _OgxProgram OgxProgram;
-typedef struct _OgxShader OgxShader;
-typedef struct _OgxDrawData OgxDrawData;
-typedef struct _OgxDrawMode OgxDrawMode;
+GLuint textures_load_range(const char *start, const char *end);
 
 #ifdef __cplusplus
 } // extern C
 #endif
 
-#endif /* OPENGX_TYPES_H */
+#endif /* TEXTURES_H */

@@ -47,7 +47,7 @@ static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
     switch (tu->gen_mode) {
     case GL_OBJECT_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+        matrix_src = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
         set_gx_mtx_rowv(0, m, tu->texture_object_plane_s);
         set_gx_mtx_rowv(1, m, tu->texture_object_plane_t);
         set_gx_mtx_row(2, m, 0.0f, 0.0f, 1.0f, 0.0f);
@@ -55,7 +55,7 @@ static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
         break;
     case GL_EYE_LINEAR:
         input_type = GX_TG_POS;
-        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+        matrix_src = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
         Mtx eye_plane;
         set_gx_mtx_rowv(0, eye_plane, tu->texture_eye_plane_s);
         set_gx_mtx_rowv(1, eye_plane, tu->texture_eye_plane_t);
@@ -66,7 +66,7 @@ static void setup_texture_gen(const OgxTextureUnit *tu, u8 tex_coord,
     case GL_REFLECTION_MAP:
     case GL_SPHERE_MAP:
         input_type = GX_TG_NRM;
-        matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+        matrix_src = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
         Mtx scale, translate, m;
         guMtxScale(scale, 0.5f, 0.5f, 0.0f);
         guMtxTrans(translate, 0.5f, 0.5f, 1.0f);
@@ -476,17 +476,17 @@ void _ogx_setup_texture_stages(u8 raster_reg_index, u8 channel)
             continue;
         }
 
-        u8 stage = GX_TEVSTAGE0 + _ogx_gpu_resources->tevstage_first++;
-        u8 tex_coord = GX_TEXCOORD0 + _ogx_gpu_resources->texcoord_first++;
-        u8 tex_map = GX_TEXMAP0 + _ogx_gpu_resources->texmap_first++;
-        u8 dtt_matrix = GX_DTTMTX0 + _ogx_gpu_resources->dttmtx_first++ * 3;
+        u8 stage = GX_TEVSTAGE0 + ogx_gpu_resources->tevstage_first++;
+        u8 tex_coord = GX_TEXCOORD0 + ogx_gpu_resources->texcoord_first++;
+        u8 tex_map = GX_TEXMAP0 + ogx_gpu_resources->texmap_first++;
+        u8 dtt_matrix = GX_DTTMTX0 + ogx_gpu_resources->dttmtx_first++ * 3;
 
         setup_texture_stage(tu, stage, tex_coord, tex_map,
                             prev_rgb, prev_alpha,
                             raster_rgb, raster_alpha, channel);
 
         if (input_coordinates == GX_TG_POS || input_coordinates == GX_TG_NRM) {
-            u8 matrix_src = GX_TEXMTX0 + _ogx_gpu_resources->texmtx_first++ * 3;
+            u8 matrix_src = GX_TEXMTX0 + ogx_gpu_resources->texmtx_first++ * 3;
             GX_LoadTexMtxImm(tu->matrix[tu->matrix_index], matrix_src, GX_MTX2x4);
             GX_SetTexCoordGen(tex_coord, GX_TG_MTX2x4,
                               input_coordinates, matrix_src);

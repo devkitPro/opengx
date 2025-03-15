@@ -124,7 +124,7 @@ static void get_projection_info(const Mtx44 matrix, u8 *type, float *near, float
     }
 }
 
-void ogx_set_projection_gx(const Mtx44 matrix)
+void _ogx_set_projection(const Mtx44 matrix)
 {
     /* OpenGL's projection matrix transform the scene into a clip space where
      * all the coordinates lie in the range [-1, 1]. Nintendo's GX, however,
@@ -154,7 +154,7 @@ void ogx_set_projection_gx(const Mtx44 matrix)
 
 static inline void update_projection_matrix()
 {
-    ogx_set_projection_gx(glparamstate.projection_matrix);
+    _ogx_set_projection(*glparamstate.proj_ptr);
 }
 
 static inline void update_normal_matrix()
@@ -310,6 +310,9 @@ void ogx_initialize()
     glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+    glparamstate.mv_ptr = &glparamstate.modelview_matrix;
+    glparamstate.proj_ptr = &glparamstate.projection_matrix;
+    glparamstate.update_matrices = _ogx_update_matrices_fixed_pipeline;
 
     glparamstate.scissor[0] = glparamstate.scissor[1] = 0;
     /* Scissor width and height are initialized when a window is attached */
@@ -519,6 +522,7 @@ static void scene_load_from_efb()
 {
     if (!s_efb_scene_buffer) return;
     _ogx_efb_restore_texobj(&s_efb_scene_buffer->texobj);
+    _ogx_setup_3D_projection();
 }
 
 /* This function might fit best in efb.c, but since it uses symbols from other
@@ -1093,7 +1097,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.projection_matrix, glparamstate.projection_stack[glparamstate.cur_proj_mat], sizeof(Mtx44));
         glparamstate.cur_proj_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         if (glparamstate.cur_modv_mat < 0) {
@@ -1102,7 +1105,6 @@ void glPopMatrix(void)
         }
         memcpy(glparamstate.modelview_matrix, glparamstate.modelview_stack[glparamstate.cur_modv_mat], sizeof(Mtx));
         glparamstate.cur_modv_mat--;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1118,6 +1120,7 @@ void glPopMatrix(void)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glPushMatrix(void)
@@ -1162,11 +1165,9 @@ void glLoadMatrixf(const GLfloat *m)
     switch (glparamstate.matrixmode) {
     case 0:
         gl_matrix_to_gx44(m, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         gl_matrix_to_gx(m, glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1178,6 +1179,7 @@ void glLoadMatrixf(const GLfloat *m)
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glMultMatrixd(const GLdouble *m)
@@ -1201,11 +1203,9 @@ void glMultMatrixf(const GLfloat *m)
         gl_matrix_to_gx44(m, mtx44);
         guMtx44Concat(glparamstate.projection_matrix, mtx44,
                       glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1214,6 +1214,7 @@ void glMultMatrixf(const GLfloat *m)
     default:
         break;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         Mtx mtx;
         gl_matrix_to_gx(m, mtx);
@@ -1228,11 +1229,9 @@ void glLoadIdentity()
     switch (glparamstate.matrixmode) {
     case 0:
         guMtx44Identity(glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         guMtxIdentity(glparamstate.modelview_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         {
@@ -1244,6 +1243,7 @@ void glLoadIdentity()
     default:
         return;
     }
+    glparamstate.dirty.bits.dirty_matrices = 1;
 }
 
 void glScalef(GLfloat x, GLfloat y, GLfloat z)
@@ -1257,11 +1257,9 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyScale(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1271,6 +1269,7 @@ void glScalef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyScale(*target, *target, x, y, z);
     }
@@ -1297,11 +1296,9 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         guMtxApplyTrans(glparamstate.projection_matrix,
                         glparamstate.projection_matrix,
                         x, y, z);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1311,6 +1308,7 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxApplyTrans(*target, *target, x, y, z);
     }
@@ -1331,11 +1329,9 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         rot[3][0] = rot[3][1] = rot[3][2] = 0.0f;
         rot[3][3] = 1.0f;
         guMtx44Concat(glparamstate.projection_matrix, rot, glparamstate.projection_matrix);
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 1:
         target = &glparamstate.modelview_matrix;
-        glparamstate.dirty.bits.dirty_matrices = 1;
         break;
     case 2:
         target = current_tex_matrix();
@@ -1345,6 +1341,7 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
         break;
     }
 
+    glparamstate.dirty.bits.dirty_matrices = 1;
     if (target) {
         guMtxConcat(*target, rot, *target);
     }
@@ -1725,6 +1722,7 @@ void glEnableClientState(GLenum cap)
 
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(POS).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(POS).size = size;
     STATE_ARRAY(POS).type = type;
     STATE_ARRAY(POS).stride = stride;
@@ -1734,6 +1732,7 @@ void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *poin
 
 void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(NRM).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(NRM).size = 3;
     STATE_ARRAY(NRM).type = type;
     STATE_ARRAY(NRM).stride = stride;
@@ -1744,6 +1743,7 @@ void glNormalPointer(GLenum type, GLsizei stride, const GLvoid *pointer)
 void glColorPointer(GLint size, GLenum type,
                     GLsizei stride, const GLvoid *pointer)
 {
+    STATE_ARRAY(CLR).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY(CLR).size = size;
     STATE_ARRAY(CLR).type = type;
     STATE_ARRAY(CLR).stride = stride;
@@ -1754,6 +1754,7 @@ void glColorPointer(GLint size, GLenum type,
 void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
 {
     int unit = glparamstate.cs.active_texture;
+    STATE_ARRAY_TEX(unit).vbo = glparamstate.bound_vbo_array;
     STATE_ARRAY_TEX(unit).size = size;
     STATE_ARRAY_TEX(unit).type = type;
     STATE_ARRAY_TEX(unit).stride = stride;
@@ -1775,6 +1776,7 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
     glparamstate.cs.vertex_enabled = 1; /* This is mandatory */
     glparamstate.cs.color_enabled = 0;
 
+    vertex->vbo = 0;
     vertex->type = GL_FLOAT;
     vertex->size = 3;
     color->type = GL_FLOAT;
@@ -1826,17 +1828,20 @@ void glInterleavedArrays(GLenum format, GLsizei stride, const GLvoid *pointer)
 
     const char *ptr = pointer;
     if (glparamstate.cs.texcoord_enabled) {
+        texcoord->vbo = 0;
         texcoord->pointer = ptr;
         texcoord->type = GL_FLOAT;
         texcoord->size = 2;
         ptr += 2 * sizeof(float);
     }
     if (glparamstate.cs.color_enabled) {
+        color->vbo = 0;
         color->pointer = ptr;
         /* TODO: use other type when implementing UB color support */
         ptr += color->size * sizeof(float);
     }
     if (glparamstate.cs.normal_enabled) {
+        normal->vbo = 0;
         normal->pointer = ptr;
         normal->type = GL_FLOAT;
         normal->size = 3;
@@ -2262,13 +2267,32 @@ static void setup_fog()
     GX_SetFog(mode, start, end, near, far, color);
 }
 
+static bool setup_common_stages()
+{
+    if (glparamstate.stencil.enabled) {
+        bool should_draw = _ogx_stencil_setup_tev();
+        if (!should_draw) return false;
+    }
+
+    if (glparamstate.clip_plane_mask != 0) {
+        _ogx_clip_setup_tev();
+    }
+
+    /* Stages and texture coordinate slots must be enabled sequentially, so we
+     * know that the number of used resources is given by
+     * OgxGpuResources::{tevstage,texcoord}_first. */
+    GX_SetNumTevStages(ogx_gpu_resources->tevstage_first);
+    GX_SetNumTexGens(ogx_gpu_resources->texcoord_first);
+    return true;
+}
+
 bool _ogx_setup_render_stages()
 {
     if (!glparamstate.dirty.bits.dirty_tev) return true;
 
     u8 raster_output, raster_reg_index;
     if (glparamstate.texture_enabled) {
-        raster_reg_index = _ogx_gpu_resources->tevreg_first++;
+        raster_reg_index = ogx_gpu_resources->tevreg_first++;
         raster_output = GX_TEVREG0 + raster_reg_index;
     } else {
         raster_output = GX_TEVPREV;
@@ -2280,7 +2304,7 @@ bool _ogx_setup_render_stages()
         GXColor color_black = { 0, 0, 0, 255 };
         GXColor color_gamb = gxcol_new_fv(glparamstate.lighting.globalambient);
 
-        _ogx_gpu_resources->tevstage_first += 2;
+        ogx_gpu_resources->tevstage_first += 2;
         GX_SetNumChans(2);
 
         unsigned char vert_color_src = GX_SRC_VTX;
@@ -2351,7 +2375,7 @@ bool _ogx_setup_render_stages()
 
         // STAGE 0: ambient*vert_color -> cprev
         // In data: d: Raster Color, a: emission color
-        u8 emission_reg = _ogx_gpu_resources->tevreg_first++;
+        u8 emission_reg = ogx_gpu_resources->tevreg_first++;
         GX_SetTevColor(GX_TEVREG0 + emission_reg, ecol);
         /* Multiply by two because there are alpha registers in between */
         GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_C0 + emission_reg * 2,
@@ -2403,7 +2427,7 @@ bool _ogx_setup_render_stages()
             _ogx_setup_texture_stages(raster_reg_index, GX_COLOR0A0);
         } else {
             // Use one stage only
-            _ogx_gpu_resources->tevstage_first += 1;
+            ogx_gpu_resources->tevstage_first += 1;
             // In data: d: Raster Color
             GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
             GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
@@ -2415,36 +2439,16 @@ bool _ogx_setup_render_stages()
         }
     }
 
-    if (glparamstate.stencil.enabled) {
-        bool should_draw = _ogx_stencil_setup_tev();
-        if (!should_draw) return false;
-    }
-
-    if (glparamstate.clip_plane_mask != 0) {
-        _ogx_clip_setup_tev();
-    }
-
-    /* Stages and texture coordinate slots must be enabled sequentially, so we
-     * know that the number of used resources is given by
-     * OgxGpuResources::{tevstage,texcoord}_first. */
-    GX_SetNumTevStages(_ogx_gpu_resources->tevstage_first);
-    GX_SetNumTexGens(_ogx_gpu_resources->texcoord_first);
+    bool should_draw = setup_common_stages();
     glparamstate.dirty.bits.dirty_tev = false;
-    return true;
+    return should_draw;
 }
 
-static inline void apply_state_fixed_pipeline()
+void _ogx_update_matrices_fixed_pipeline()
 {
-    // Matrix stuff
-    if (glparamstate.dirty.bits.dirty_matrices) {
-        update_modelview_matrix();
-        update_projection_matrix();
-    }
-    if (glparamstate.dirty.bits.dirty_matrices | glparamstate.dirty.bits.dirty_tev) {
-        update_normal_matrix();
-    }
-
-    glparamstate.dirty.bits.dirty_matrices = 0;
+    update_modelview_matrix();
+    update_projection_matrix();
+    update_normal_matrix();
 }
 
 void _ogx_apply_state()
@@ -2496,10 +2500,6 @@ void _ogx_apply_state()
 
     if (glparamstate.dirty.bits.dirty_scissor) {
         update_scissor();
-    }
-
-    if (!glparamstate.current_program) {
-        apply_state_fixed_pipeline();
     }
 
     /* Reset the updated bits to 0. We don't unconditionally reset everything
@@ -2623,9 +2623,18 @@ static bool setup_draw(const OgxDrawData *draw_data)
         if (!should_draw) return false;
     } else {
         _ogx_shader_setup_draw(draw_data);
+        if (!setup_common_stages()) return false;
     }
     _ogx_apply_state();
     return true;
+}
+
+void _ogx_update_matrices()
+{
+    if (glparamstate.dirty.bits.dirty_matrices) {
+        glparamstate.update_matrices();
+        glparamstate.dirty.bits.dirty_matrices = 0;
+    }
 }
 
 void glDrawArrays(GLenum mode, GLint first, GLsizei count)
@@ -2644,6 +2653,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    _ogx_update_matrices();
     OgxDrawData draw_data = { gxmode, count, first, };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
@@ -2679,6 +2689,7 @@ void glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indic
     /* If VBOs are in use, make sure their data has been updated */
     ppcsync();
 
+    _ogx_update_matrices();
     OgxDrawData draw_data = { gxmode, count, 0, type, indices };
     if (glparamstate.stencil.enabled) {
         _ogx_gpu_resources_push();
