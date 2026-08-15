@@ -367,3 +367,28 @@ void glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, 
     warning("glFramebufferTexture3D is unsupported");
     set_error(GL_INVALID_OPERATION);
 }
+
+void ogx_enable_module_fbo() {
+    _ogx_add_extension("GL_EXT_framebuffer_object");
+}
+
+/* FBOs are in OpenGL 3.0, and in older versions as an extension */
+#define PROC(name) \
+    { #name, name }, \
+    { #name "EXT", name }
+static const OgxProcMap s_proc_map[] = {
+    PROC(glBindFramebuffer),
+    PROC(glCheckFramebufferStatus),
+    PROC(glDeleteFramebuffers),
+    PROC(glFramebufferTexture1D),
+    PROC(glFramebufferTexture2D),
+    PROC(glFramebufferTexture3D),
+    PROC(glGenFramebuffers),
+    PROC(glIsFramebuffer),
+};
+#define NUM_PROCS (sizeof(s_proc_map) / sizeof(s_proc_map[0]))
+
+OgxFunctions _ogx_fbo_functions = {
+    NUM_PROCS,
+    s_proc_map,
+};

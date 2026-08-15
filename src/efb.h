@@ -85,8 +85,7 @@ void _ogx_efb_set_content_type_real(OgxEfbContentType content_type);
 /* We inline this part since most of the times the desired content type will be
  * the one already active */
 static inline void _ogx_efb_set_content_type(OgxEfbContentType content_type) {
-    if (content_type == _ogx_efb_content_type &&
-        (content_type != OGX_EFB_SCENE || _ogx_fbo_state.dirty.all == 0))
+    if (content_type == _ogx_efb_content_type)
         return;
     _ogx_efb_set_content_type_real(content_type);
 }

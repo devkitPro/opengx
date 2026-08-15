@@ -87,7 +87,11 @@ bool _ogx_fbo_get_integerv(GLenum pname, GLint *params);
 void _ogx_fbo_scene_save_from_efb(OgxEfbContentType next_content_type);
 void _ogx_fbo_scene_load_into_efb(void);
 
-#ifndef BUILDING_FBO_CODE
+#ifdef BUILDING_FBO_CODE
+
+extern OgxFunctions _ogx_fbo_functions;
+
+#else /* BUILDING_FBO_CODE not defined */
 
 OgxFboState _ogx_fbo_state __attribute__((weak)) = { 0, 0 };
 
@@ -105,6 +109,8 @@ void __attribute__((weak)) _ogx_fbo_scene_load_into_efb()
 {
     _ogx_scene_load_into_efb();
 }
+
+OgxFunctions _ogx_fbo_functions __attribute__((weak)) = { 0, NULL };
 
 #endif /* BUILDING_FBO_CODE */
 

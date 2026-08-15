@@ -355,6 +355,8 @@ void _ogx_set_projection(const Mtx44 matrix);
 bool _ogx_setup_render_stages(void);
 void _ogx_update_vertex_array_readers(OgxDrawMode mode);
 
+void _ogx_add_extension(const GLubyte *name);
+
 #ifdef __cplusplus
 } // extern C
 #endif

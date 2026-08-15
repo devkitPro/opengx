@@ -40,8 +40,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 static const GLubyte gl_null_string[1] = { 0 };
-/* This is not static because we might modify it in place */
-static GLubyte s_extension_string[] =
+/* This is not const because we might modify it in place.
+ * Make sure that this buffer is large enough to fit all added extensions. */
+static GLubyte s_extension_string[256] =
     "GL_ARB_multitexture "
     "GL_ARB_vertex_buffer_object ";
 
@@ -70,6 +71,11 @@ static GLubyte *get_extension_string(int index)
         count++;
     }
     return ptr;
+}
+
+void _ogx_add_extension(const GLubyte *name)
+{
+    strcat(s_extension_string, name);
 }
 
 GLenum glGetError(void)

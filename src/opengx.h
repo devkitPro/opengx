@@ -254,6 +254,9 @@ static inline void ogx_shader_set_modelview_gl(const GLfloat *matrix)
  * matrices, and uploads them separately to GX. */
 void ogx_shader_set_mvp_gl(const GLfloat *matrix);
 
+/* Force the inclusion of the FBO code into the program */
+void ogx_enable_module_fbo();
+
 #ifdef __cplusplus
 } // extern C
 #endif

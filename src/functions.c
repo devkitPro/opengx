@@ -29,6 +29,7 @@ POSSIBILITY OF SUCH DAMAGE.
 *****************************************************************************/
 
 #define GL_GLEXT_PROTOTYPES 1
+#include "fbo.h"
 #include "opengx.h"
 #include "shader.h"
 #include "types.h"
@@ -51,7 +52,9 @@ static const OgxProcMap s_proc_map[] = {
     PROC(glBindBuffer), /* OpenGL 1.5 */
     PROC(glBindTexture),
     PROC(glBitmap),
+    PROC(glBlendEquation),
     PROC(glBlendFunc),
+    PROC(glBlendFuncSeparate),
     PROC(glBufferData), /* OpenGL 1.5 */
     PROC(glBufferSubData), /* OpenGL 1.5 */
     PROC(glCallList),
@@ -467,6 +470,13 @@ void *ogx_get_proc_address(const char *proc)
     if (_ogx_shader_functions.num_functions > 0) {
         ret = search_in_functions(_ogx_shader_functions.functions,
                                   _ogx_shader_functions.num_functions,
+                                  proc);
+        if (ret) return ret;
+    }
+
+    if (_ogx_fbo_functions.num_functions > 0) {
+        ret = search_in_functions(_ogx_fbo_functions.functions,
+                                  _ogx_fbo_functions.num_functions,
                                   proc);
         if (ret) return ret;
     }

@@ -1670,6 +1670,13 @@ void glBlendFunc(GLenum sfactor, GLenum dfactor)
     glparamstate.dirty.bits.dirty_blend = 1;
 }
 
+void glBlendFuncSeparate(GLenum sfactor_rgb, GLenum dfactor_rgb,
+                         GLenum sfactor_alpha, GLenum dfactor_alpha)
+{
+    /* This is not correct, but better than nothing */
+    glBlendFunc(sfactor_rgb, dfactor_rgb);
+}
+
 void glPointSize(GLfloat size)
 {
     unsigned int gxsize = size;
